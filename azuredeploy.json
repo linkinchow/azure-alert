@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "4725077309781166963"
+      "templateHash": "1653497574373555976"
     }
   },
   "parameters": {
@@ -178,6 +178,15 @@
       "metadata": {
         "description": "M4: data disk bandwidth consumed threshold in percent."
       }
+    },
+    "feishuMaxAttempts": {
+      "type": "int",
+      "defaultValue": 8,
+      "minValue": 1,
+      "maxValue": 15,
+      "metadata": {
+        "description": "Feishu rate limiting (code 11232 / HTTP 429): attempts per message before it is recorded as failed; the wait grows with each attempt (8 attempts take about 10 minutes)."
+      }
     }
   },
   "variables": {
@@ -221,6 +230,9 @@
           },
           "sinkWorkspaceResourceId": {
             "value": "[parameters('sinkWorkspaceResourceId')]"
+          },
+          "feishuMaxAttempts": {
+            "value": "[parameters('feishuMaxAttempts')]"
           }
         },
         "template": {
@@ -230,7 +242,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "8685021597076476992"
+              "templateHash": "18404979187156334775"
             }
           },
           "parameters": {
@@ -292,6 +304,13 @@
               "metadata": {
                 "description": "Category -> display name shown in the card header; merged over the built-in Chinese names."
               }
+            },
+            "feishuMaxAttempts": {
+              "type": "int",
+              "defaultValue": 8,
+              "metadata": {
+                "description": "Feishu rate limiting (code 11232 / HTTP 429): attempts per message, with a growing wait between attempts (8 attempts take about 10 minutes)."
+              }
             }
           },
           "variables": {
@@ -326,6 +345,10 @@
                 "resourceHealthExcludedTitles": {
                   "type": "Array",
                   "defaultValue": []
+                },
+                "feishuMaxAttempts": {
+                  "type": "Int",
+                  "defaultValue": 8
                 }
               },
               "triggers": {
@@ -705,169 +728,158 @@
                         ]
                       },
                       "actions": {
-                        "Post_card": {
-                          "type": "Http",
-                          "inputs": {
-                            "method": "POST",
-                            "uri": "@{outputs('Webhook')}",
-                            "headers": {
-                              "Content-Type": "application/json"
-                            },
-                            "body": "@outputs('Card')"
-                          },
-                          "runtimeConfiguration": {
-                            "secureData": {
-                              "properties": [
-                                "inputs"
-                              ]
-                            }
-                          },
-                          "runAfter": {}
-                        },
-                        "Card_rejected": {
-                          "type": "If",
-                          "expression": {
-                            "and": [
-                              {
-                                "not": {
-                                  "equals": [
-                                    "@coalesce(body('Post_card')?['code'], body('Post_card')?['StatusCode'], 0)",
-                                    0
-                                  ]
-                                }
-                              }
-                            ]
-                          },
-                          "actions": {
-                            "Record_rejected": {
-                              "type": "AppendToArrayVariable",
-                              "inputs": {
-                                "name": "failures",
-                                "value": {
-                                  "eventId": "@items('For_each_event')?['eventId']",
-                                  "response": "@body('Post_card')"
-                                }
-                              },
-                              "runAfter": {}
-                            }
-                          },
-                          "else": {
-                            "actions": {}
-                          },
-                          "runAfter": {
-                            "Post_card": [
-                              "Succeeded"
-                            ]
-                          }
-                        },
-                        "Record_http_failure": {
-                          "type": "AppendToArrayVariable",
-                          "inputs": {
-                            "name": "failures",
-                            "value": {
-                              "eventId": "@items('For_each_event')?['eventId']",
-                              "status": "@outputs('Post_card')?['statusCode']"
-                            }
-                          },
-                          "runAfter": {
-                            "Post_card": [
-                              "Failed",
-                              "TimedOut"
-                            ]
-                          }
-                        },
-                        "More_parts": {
+                        "For_each_message": {
                           "type": "Foreach",
-                          "foreach": "@skip(range(0, length(outputs('Summary_parts'))), 1)",
+                          "foreach": "@outputs('Messages')",
                           "runtimeConfiguration": {
                             "concurrency": {
                               "repetitions": 1
                             }
                           },
                           "actions": {
-                            "Part_card": {
-                              "type": "Compose",
+                            "Reset_attempt": {
+                              "type": "SetVariable",
                               "inputs": {
-                                "msg_type": "interactive",
-                                "card": {
-                                  "config": {
-                                    "wide_screen_mode": true
-                                  },
-                                  "header": {
-                                    "template": "@{if(equals(items('For_each_event')?['status'], 'Resolved'), 'green', if(equals(items('For_each_event')?['severity'], 'Critical'), 'red', if(equals(items('For_each_event')?['severity'], 'Warning'), 'orange', 'blue')))}",
-                                    "title": {
-                                      "tag": "plain_text",
-                                      "content": "@{concat(if(equals(items('For_each_event')?['status'], 'Resolved'), '已恢复', if(equals(items('For_each_event')?['severity'], 'Critical'), '严重', if(equals(items('For_each_event')?['severity'], 'Warning'), '警告', '提示'))), '｜', coalesce(parameters('categoryNames')?[coalesce(items('For_each_event')?['category'], '-')], items('For_each_event')?['category']), '｜', take(coalesce(items('For_each_event')?['title'], ''), 150), '（续 ', string(add(items('More_parts'), 1)), '/', string(length(outputs('Summary_parts'))), '）')}"
-                                    }
-                                  },
-                                  "elements": [
-                                    {
-                                      "tag": "div",
-                                      "text": {
-                                        "tag": "lark_md",
-                                        "content": "@{outputs('Summary_parts')[items('More_parts')]}"
-                                      }
-                                    },
-                                    {
-                                      "tag": "note",
-                                      "elements": [
-                                        {
-                                          "tag": "plain_text",
-                                          "content": "@{concat('Azure 告警 · 来源 ', coalesce(items('For_each_event')?['source']?['module'], '-'), ' · ', coalesce(items('For_each_event')?['source']?['channel'], '-'))}"
-                                        }
-                                      ]
-                                    }
-                                  ]
-                                }
+                                "name": "attempt",
+                                "value": 0
                               },
                               "runAfter": {}
                             },
-                            "Post_part": {
-                              "type": "Http",
+                            "Reset_state": {
+                              "type": "SetVariable",
                               "inputs": {
-                                "method": "POST",
-                                "uri": "@{outputs('Webhook')}",
-                                "headers": {
-                                  "Content-Type": "application/json"
-                                },
-                                "body": "@outputs('Part_card')"
-                              },
-                              "runtimeConfiguration": {
-                                "secureData": {
-                                  "properties": [
-                                    "inputs"
-                                  ]
-                                }
+                                "name": "sendState",
+                                "value": "pending"
                               },
                               "runAfter": {
-                                "Part_card": [
+                                "Reset_attempt": [
                                   "Succeeded"
                                 ]
                               }
                             },
-                            "Part_rejected": {
-                              "type": "If",
-                              "expression": {
-                                "and": [
-                                  {
-                                    "not": {
-                                      "equals": [
-                                        "@coalesce(body('Post_part')?['code'], body('Post_part')?['StatusCode'], 0)",
-                                        0
-                                      ]
-                                    }
-                                  }
-                                ]
+                            "Send_with_retry": {
+                              "type": "Until",
+                              "expression": "@or(not(equals(variables('sendState'), 'pending')), greaterOrEquals(variables('attempt'), parameters('feishuMaxAttempts')))",
+                              "limit": {
+                                "count": 20,
+                                "timeout": "PT1H"
                               },
                               "actions": {
-                                "Record_part_rejected": {
+                                "Post_message": {
+                                  "type": "Http",
+                                  "inputs": {
+                                    "method": "POST",
+                                    "uri": "@{outputs('Webhook')}",
+                                    "headers": {
+                                      "Content-Type": "application/json"
+                                    },
+                                    "body": "@items('For_each_message')"
+                                  },
+                                  "runtimeConfiguration": {
+                                    "secureData": {
+                                      "properties": [
+                                        "inputs"
+                                      ]
+                                    }
+                                  },
+                                  "runAfter": {}
+                                },
+                                "Count_attempt": {
+                                  "type": "IncrementVariable",
+                                  "inputs": {
+                                    "name": "attempt",
+                                    "value": 1
+                                  },
+                                  "runAfter": {
+                                    "Post_message": [
+                                      "Succeeded",
+                                      "Failed",
+                                      "TimedOut"
+                                    ]
+                                  }
+                                },
+                                "Check_result": {
+                                  "type": "If",
+                                  "expression": "@and(equals(actions('Post_message')?['status'], 'Succeeded'), equals(coalesce(body('Post_message')?['code'], body('Post_message')?['StatusCode'], 0), 0))",
+                                  "actions": {
+                                    "Mark_sent": {
+                                      "type": "SetVariable",
+                                      "inputs": {
+                                        "name": "sendState",
+                                        "value": "sent"
+                                      },
+                                      "runAfter": {}
+                                    }
+                                  },
+                                  "else": {
+                                    "actions": {
+                                      "Rate_limited": {
+                                        "type": "If",
+                                        "expression": "@or(equals(coalesce(body('Post_message')?['code'], body('Post_message')?['StatusCode'], 0), 11232), equals(outputs('Post_message')?['statusCode'], 429))",
+                                        "actions": {
+                                          "Back_off": {
+                                            "type": "If",
+                                            "expression": "@less(variables('attempt'), parameters('feishuMaxAttempts'))",
+                                            "actions": {
+                                              "Wait": {
+                                                "type": "Wait",
+                                                "inputs": {
+                                                  "interval": {
+                                                    "count": "@add(mul(15, variables('attempt')), rand(0, 15))",
+                                                    "unit": "Second"
+                                                  }
+                                                },
+                                                "runAfter": {}
+                                              }
+                                            },
+                                            "else": {
+                                              "actions": {}
+                                            },
+                                            "runAfter": {}
+                                          }
+                                        },
+                                        "else": {
+                                          "actions": {
+                                            "Mark_failed": {
+                                              "type": "SetVariable",
+                                              "inputs": {
+                                                "name": "sendState",
+                                                "value": "failed"
+                                              },
+                                              "runAfter": {}
+                                            }
+                                          }
+                                        },
+                                        "runAfter": {}
+                                      }
+                                    }
+                                  },
+                                  "runAfter": {
+                                    "Count_attempt": [
+                                      "Succeeded"
+                                    ]
+                                  }
+                                }
+                              },
+                              "runAfter": {
+                                "Reset_state": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Not_sent": {
+                              "type": "If",
+                              "expression": "@not(equals(variables('sendState'), 'sent'))",
+                              "actions": {
+                                "Record_send_failure": {
                                   "type": "AppendToArrayVariable",
                                   "inputs": {
                                     "name": "failures",
                                     "value": {
                                       "eventId": "@items('For_each_event')?['eventId']",
-                                      "part": "@items('More_parts')",
-                                      "response": "@body('Post_part')"
+                                      "attempts": "@variables('attempt')",
+                                      "status": "@outputs('Post_message')?['statusCode']",
+                                      "response": "@body('Post_message')"
                                     }
                                   },
                                   "runAfter": {}
@@ -877,34 +889,15 @@
                                 "actions": {}
                               },
                               "runAfter": {
-                                "Post_part": [
-                                  "Succeeded"
-                                ]
-                              }
-                            },
-                            "Record_part_failure": {
-                              "type": "AppendToArrayVariable",
-                              "inputs": {
-                                "name": "failures",
-                                "value": {
-                                  "eventId": "@items('For_each_event')?['eventId']",
-                                  "part": "@items('More_parts')",
-                                  "status": "@outputs('Post_part')?['statusCode']"
-                                }
-                              },
-                              "runAfter": {
-                                "Post_part": [
+                                "Send_with_retry": [
+                                  "Succeeded",
                                   "Failed",
                                   "TimedOut"
                                 ]
                               }
                             }
                           },
-                          "runAfter": {
-                            "Card_rejected": [
-                              "Succeeded"
-                            ]
-                          }
+                          "runAfter": {}
                         }
                       },
                       "else": {
@@ -924,7 +917,7 @@
                         }
                       },
                       "runAfter": {
-                        "Card": [
+                        "Messages": [
                           "Succeeded"
                         ]
                       }
@@ -949,10 +942,63 @@
                           "Succeeded"
                         ]
                       }
+                    },
+                    "Part_cards": {
+                      "type": "Select",
+                      "inputs": {
+                        "from": "@skip(range(0, length(outputs('Summary_parts'))), 1)",
+                        "select": {
+                          "msg_type": "interactive",
+                          "card": {
+                            "config": {
+                              "wide_screen_mode": true
+                            },
+                            "header": {
+                              "template": "@{if(equals(items('For_each_event')?['status'], 'Resolved'), 'green', if(equals(items('For_each_event')?['severity'], 'Critical'), 'red', if(equals(items('For_each_event')?['severity'], 'Warning'), 'orange', 'blue')))}",
+                              "title": {
+                                "tag": "plain_text",
+                                "content": "@{concat(if(equals(items('For_each_event')?['status'], 'Resolved'), '已恢复', if(equals(items('For_each_event')?['severity'], 'Critical'), '严重', if(equals(items('For_each_event')?['severity'], 'Warning'), '警告', '提示'))), '｜', coalesce(parameters('categoryNames')?[coalesce(items('For_each_event')?['category'], '-')], items('For_each_event')?['category']), '｜', take(coalesce(items('For_each_event')?['title'], ''), 150), '（续 ', string(add(item(), 1)), '/', string(length(outputs('Summary_parts'))), '）')}"
+                              }
+                            },
+                            "elements": [
+                              {
+                                "tag": "div",
+                                "text": {
+                                  "tag": "lark_md",
+                                  "content": "@{outputs('Summary_parts')[item()]}"
+                                }
+                              },
+                              {
+                                "tag": "note",
+                                "elements": [
+                                  {
+                                    "tag": "plain_text",
+                                    "content": "@{concat('Azure 告警 · 来源 ', coalesce(items('For_each_event')?['source']?['module'], '-'), ' · ', coalesce(items('For_each_event')?['source']?['channel'], '-'))}"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "runAfter": {
+                        "Card": [
+                          "Succeeded"
+                        ]
+                      }
+                    },
+                    "Messages": {
+                      "type": "Compose",
+                      "inputs": "@union(createArray(outputs('Card')), body('Part_cards'))",
+                      "runAfter": {
+                        "Part_cards": [
+                          "Succeeded"
+                        ]
+                      }
                     }
                   },
                   "runAfter": {
-                    "Init_failures": [
+                    "Init_send_state": [
                       "Succeeded"
                     ]
                   }
@@ -1129,6 +1175,40 @@
                       "Succeeded"
                     ]
                   }
+                },
+                "Init_attempt": {
+                  "type": "InitializeVariable",
+                  "inputs": {
+                    "variables": [
+                      {
+                        "name": "attempt",
+                        "type": "integer",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  "runAfter": {
+                    "Init_failures": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Init_send_state": {
+                  "type": "InitializeVariable",
+                  "inputs": {
+                    "variables": [
+                      {
+                        "name": "sendState",
+                        "type": "string",
+                        "value": ""
+                      }
+                    ]
+                  },
+                  "runAfter": {
+                    "Init_attempt": [
+                      "Succeeded"
+                    ]
+                  }
                 }
               },
               "outputs": {}
@@ -1179,7 +1259,7 @@
           "resources": [
             {
               "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
-              "apiVersion": "2023-01-31",
+              "apiVersion": "2024-11-30",
               "name": "[format('{0}-mi', parameters('prefix'))]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]"
@@ -1189,7 +1269,7 @@
               "apiVersion": "2022-04-01",
               "name": "[guid(resourceGroup().id, resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('prefix'))), 'acdd72a7-3385-48ef-bd42-f606fba81ae7')]",
               "properties": {
-                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('prefix'))), '2023-01-31').principalId]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('prefix'))), '2024-11-30').principalId]",
                 "principalType": "ServicePrincipal",
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'acdd72a7-3385-48ef-bd42-f606fba81ae7')]"
               },
@@ -1218,6 +1298,9 @@
                   },
                   "resourceHealthExcludedTitles": {
                     "value": "[parameters('resourceHealthExcludedTitles')]"
+                  },
+                  "feishuMaxAttempts": {
+                    "value": "[parameters('feishuMaxAttempts')]"
                   },
                   "categoryNames": {
                     "value": "[union(variables('defaultCategoryNames'), parameters('categoryNames'))]"
@@ -1284,7 +1367,7 @@
                     "value": "[parameters('tags')]"
                   },
                   "identityPrincipalId": {
-                    "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('prefix'))), '2023-01-31').principalId]"
+                    "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('prefix'))), '2024-11-30').principalId]"
                   },
                   "workspaceResourceId": {
                     "value": "[parameters('sinkWorkspaceResourceId')]"
@@ -1297,7 +1380,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.44.1.10279",
-                      "templateHash": "13464317397781273002"
+                      "templateHash": "14148679214147823019"
                     }
                   },
                   "parameters": {
@@ -1397,7 +1480,7 @@
                     {
                       "condition": "[empty(parameters('workspaceResourceId'))]",
                       "type": "Microsoft.OperationalInsights/workspaces",
-                      "apiVersion": "2023-09-01",
+                      "apiVersion": "2025-02-01",
                       "name": "[format('{0}-law', parameters('prefix'))]",
                       "location": "[parameters('location')]",
                       "tags": "[parameters('tags')]",
@@ -1410,7 +1493,7 @@
                     },
                     {
                       "type": "Microsoft.OperationalInsights/workspaces/tables",
-                      "apiVersion": "2022-10-01",
+                      "apiVersion": "2025-02-01",
                       "name": "[format('{0}/{1}', if(empty(parameters('workspaceResourceId')), format('{0}-law', parameters('prefix')), last(split(parameters('workspaceResourceId'), '/'))), variables('tableName'))]",
                       "properties": {
                         "schema": {
@@ -1425,7 +1508,7 @@
                     },
                     {
                       "type": "Microsoft.Insights/dataCollectionRules",
-                      "apiVersion": "2023-03-11",
+                      "apiVersion": "2024-03-11",
                       "name": "[format('{0}-dcr-events', parameters('prefix'))]",
                       "location": "[parameters('location')]",
                       "tags": "[parameters('tags')]",
@@ -1479,7 +1562,7 @@
                   "outputs": {
                     "ingestionUrl": {
                       "type": "string",
-                      "value": "[format('{0}/dataCollectionRules/{1}/streams/{2}?api-version=2023-01-01', reference(resourceId('Microsoft.Insights/dataCollectionRules', format('{0}-dcr-events', parameters('prefix'))), '2023-03-11').endpoints.logsIngestion, reference(resourceId('Microsoft.Insights/dataCollectionRules', format('{0}-dcr-events', parameters('prefix'))), '2023-03-11').immutableId, variables('streamName'))]"
+                      "value": "[format('{0}/dataCollectionRules/{1}/streams/{2}?api-version=2023-01-01', reference(resourceId('Microsoft.Insights/dataCollectionRules', format('{0}-dcr-events', parameters('prefix'))), '2024-03-11').endpoints.logsIngestion, reference(resourceId('Microsoft.Insights/dataCollectionRules', format('{0}-dcr-events', parameters('prefix'))), '2024-03-11').immutableId, variables('streamName'))]"
                     },
                     "workspaceId": {
                       "type": "string",
@@ -1594,7 +1677,7 @@
             },
             "identityPrincipalId": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('prefix'))), '2023-01-31').principalId]"
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('prefix'))), '2024-11-30').principalId]"
             },
             "routerName": {
               "type": "string",
@@ -1724,7 +1807,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "527268409727872475"
+              "templateHash": "12327588517700920895"
             }
           },
           "parameters": {
@@ -1852,7 +1935,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.44.1.10279",
-                      "templateHash": "5309551585121299384"
+                      "templateHash": "1111358962705038378"
                     }
                   },
                   "parameters": {
@@ -1982,6 +2065,14 @@
                         "intervalMinutes": {
                           "type": "Int",
                           "defaultValue": 1
+                        },
+                        "armEndpoint": {
+                          "type": "String",
+                          "defaultValue": "https://management.azure.com"
+                        },
+                        "armAudience": {
+                          "type": "String",
+                          "defaultValue": "https://management.azure.com/"
                         }
                       },
                       "triggers": {
@@ -2020,11 +2111,11 @@
                           "type": "Http",
                           "inputs": {
                             "method": "GET",
-                            "uri": "@{concat('https://management.azure.com', workflow()['id'], '/runs?api-version=2016-06-01&$top=1&$filter=', encodeUriComponent('status eq ''Succeeded'''))}",
+                            "uri": "@{concat(parameters('armEndpoint'), workflow()['id'], '/runs?api-version=2016-06-01&$top=1&$filter=', encodeUriComponent('status eq ''Succeeded'''))}",
                             "authentication": {
                               "type": "ManagedServiceIdentity",
                               "identity": "@parameters('miId')",
-                              "audience": "https://management.azure.com/"
+                              "audience": "@{parameters('armAudience')}"
                             }
                           },
                           "runAfter": {
@@ -2050,11 +2141,11 @@
                               "type": "Http",
                               "inputs": {
                                 "method": "GET",
-                                "uri": "@{concat('https://management.azure.com', workflow()['id'], '/runs/', first(body('Last_good_run')?['value'])?['name'], '/actions/State_out?api-version=2016-06-01')}",
+                                "uri": "@{concat(parameters('armEndpoint'), workflow()['id'], '/runs/', first(body('Last_good_run')?['value'])?['name'], '/actions/State_out?api-version=2016-06-01')}",
                                 "authentication": {
                                   "type": "ManagedServiceIdentity",
                                   "identity": "@parameters('miId')",
-                                  "audience": "https://management.azure.com/"
+                                  "audience": "@{parameters('armAudience')}"
                                 }
                               },
                               "runAfter": {}
@@ -2181,7 +2272,7 @@
                               "type": "Http",
                               "inputs": {
                                 "method": "POST",
-                                "uri": "https://management.azure.com/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01",
+                                "uri": "@{parameters('armEndpoint')}/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01",
                                 "headers": {
                                   "Content-Type": "application/json"
                                 },
@@ -2189,7 +2280,7 @@
                                 "authentication": {
                                   "type": "ManagedServiceIdentity",
                                   "identity": "@parameters('miId')",
-                                  "audience": "https://management.azure.com/"
+                                  "audience": "@{parameters('armAudience')}"
                                 }
                               },
                               "runAfter": {}
@@ -2368,6 +2459,8 @@
                     "firstLineEnd": "[indexOf(parameters('query'), '\n')]",
                     "exclusion": "[format('| where subscriptionId !in~ ({0})\n', join(map(parameters('excludedSubscriptionIds'), lambda('s', format('''{0}''', lambdaVariables('s')))), ', '))]",
                     "finalQuery": "[if(empty(parameters('excludedSubscriptionIds')), parameters('query'), format('{0}{1}{2}', substring(parameters('query'), 0, add(variables('firstLineEnd'), 1)), variables('exclusion'), substring(parameters('query'), add(variables('firstLineEnd'), 1))))]",
+                    "armAudience": "[environment().resourceManager]",
+                    "armEndpoint": "[replace(replace(format('{0}#', variables('armAudience')), '/#', ''), '#', '')]",
                     "baseDefinition": "[variables('$fxv#0')]",
                     "definition": "[union(variables('baseDefinition'), createObject('triggers', createObject('Recurrence', createObject('type', 'Recurrence', 'recurrence', createObject('frequency', 'Minute', 'interval', parameters('intervalMinutes')), 'runtimeConfiguration', createObject('concurrency', createObject('runs', 1, 'maximumWaitingRuns', 1))))))]"
                   },
@@ -2420,6 +2513,12 @@
                           },
                           "bootstrapSilent": {
                             "value": "[parameters('bootstrapSilent')]"
+                          },
+                          "armEndpoint": {
+                            "value": "[variables('armEndpoint')]"
+                          },
+                          "armAudience": {
+                            "value": "[variables('armAudience')]"
                           }
                         }
                       }
@@ -2599,7 +2698,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "7501305635033708225"
+              "templateHash": "2009370670007451256"
             }
           },
           "functions": [
@@ -2912,7 +3011,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.44.1.10279",
-                      "templateHash": "5309551585121299384"
+                      "templateHash": "1111358962705038378"
                     }
                   },
                   "parameters": {
@@ -3042,6 +3141,14 @@
                         "intervalMinutes": {
                           "type": "Int",
                           "defaultValue": 1
+                        },
+                        "armEndpoint": {
+                          "type": "String",
+                          "defaultValue": "https://management.azure.com"
+                        },
+                        "armAudience": {
+                          "type": "String",
+                          "defaultValue": "https://management.azure.com/"
                         }
                       },
                       "triggers": {
@@ -3080,11 +3187,11 @@
                           "type": "Http",
                           "inputs": {
                             "method": "GET",
-                            "uri": "@{concat('https://management.azure.com', workflow()['id'], '/runs?api-version=2016-06-01&$top=1&$filter=', encodeUriComponent('status eq ''Succeeded'''))}",
+                            "uri": "@{concat(parameters('armEndpoint'), workflow()['id'], '/runs?api-version=2016-06-01&$top=1&$filter=', encodeUriComponent('status eq ''Succeeded'''))}",
                             "authentication": {
                               "type": "ManagedServiceIdentity",
                               "identity": "@parameters('miId')",
-                              "audience": "https://management.azure.com/"
+                              "audience": "@{parameters('armAudience')}"
                             }
                           },
                           "runAfter": {
@@ -3110,11 +3217,11 @@
                               "type": "Http",
                               "inputs": {
                                 "method": "GET",
-                                "uri": "@{concat('https://management.azure.com', workflow()['id'], '/runs/', first(body('Last_good_run')?['value'])?['name'], '/actions/State_out?api-version=2016-06-01')}",
+                                "uri": "@{concat(parameters('armEndpoint'), workflow()['id'], '/runs/', first(body('Last_good_run')?['value'])?['name'], '/actions/State_out?api-version=2016-06-01')}",
                                 "authentication": {
                                   "type": "ManagedServiceIdentity",
                                   "identity": "@parameters('miId')",
-                                  "audience": "https://management.azure.com/"
+                                  "audience": "@{parameters('armAudience')}"
                                 }
                               },
                               "runAfter": {}
@@ -3241,7 +3348,7 @@
                               "type": "Http",
                               "inputs": {
                                 "method": "POST",
-                                "uri": "https://management.azure.com/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01",
+                                "uri": "@{parameters('armEndpoint')}/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01",
                                 "headers": {
                                   "Content-Type": "application/json"
                                 },
@@ -3249,7 +3356,7 @@
                                 "authentication": {
                                   "type": "ManagedServiceIdentity",
                                   "identity": "@parameters('miId')",
-                                  "audience": "https://management.azure.com/"
+                                  "audience": "@{parameters('armAudience')}"
                                 }
                               },
                               "runAfter": {}
@@ -3428,6 +3535,8 @@
                     "firstLineEnd": "[indexOf(parameters('query'), '\n')]",
                     "exclusion": "[format('| where subscriptionId !in~ ({0})\n', join(map(parameters('excludedSubscriptionIds'), lambda('s', format('''{0}''', lambdaVariables('s')))), ', '))]",
                     "finalQuery": "[if(empty(parameters('excludedSubscriptionIds')), parameters('query'), format('{0}{1}{2}', substring(parameters('query'), 0, add(variables('firstLineEnd'), 1)), variables('exclusion'), substring(parameters('query'), add(variables('firstLineEnd'), 1))))]",
+                    "armAudience": "[environment().resourceManager]",
+                    "armEndpoint": "[replace(replace(format('{0}#', variables('armAudience')), '/#', ''), '#', '')]",
                     "baseDefinition": "[variables('$fxv#0')]",
                     "definition": "[union(variables('baseDefinition'), createObject('triggers', createObject('Recurrence', createObject('type', 'Recurrence', 'recurrence', createObject('frequency', 'Minute', 'interval', parameters('intervalMinutes')), 'runtimeConfiguration', createObject('concurrency', createObject('runs', 1, 'maximumWaitingRuns', 1))))))]"
                   },
@@ -3480,6 +3589,12 @@
                           },
                           "bootstrapSilent": {
                             "value": "[parameters('bootstrapSilent')]"
+                          },
+                          "armEndpoint": {
+                            "value": "[variables('armEndpoint')]"
+                          },
+                          "armAudience": {
+                            "value": "[variables('armAudience')]"
                           }
                         }
                       }
@@ -3655,7 +3770,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "853337876460089990"
+              "templateHash": "4146388701607121015"
             }
           },
           "parameters": {
@@ -3782,7 +3897,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.44.1.10279",
-                      "templateHash": "5309551585121299384"
+                      "templateHash": "1111358962705038378"
                     }
                   },
                   "parameters": {
@@ -3912,6 +4027,14 @@
                         "intervalMinutes": {
                           "type": "Int",
                           "defaultValue": 1
+                        },
+                        "armEndpoint": {
+                          "type": "String",
+                          "defaultValue": "https://management.azure.com"
+                        },
+                        "armAudience": {
+                          "type": "String",
+                          "defaultValue": "https://management.azure.com/"
                         }
                       },
                       "triggers": {
@@ -3950,11 +4073,11 @@
                           "type": "Http",
                           "inputs": {
                             "method": "GET",
-                            "uri": "@{concat('https://management.azure.com', workflow()['id'], '/runs?api-version=2016-06-01&$top=1&$filter=', encodeUriComponent('status eq ''Succeeded'''))}",
+                            "uri": "@{concat(parameters('armEndpoint'), workflow()['id'], '/runs?api-version=2016-06-01&$top=1&$filter=', encodeUriComponent('status eq ''Succeeded'''))}",
                             "authentication": {
                               "type": "ManagedServiceIdentity",
                               "identity": "@parameters('miId')",
-                              "audience": "https://management.azure.com/"
+                              "audience": "@{parameters('armAudience')}"
                             }
                           },
                           "runAfter": {
@@ -3980,11 +4103,11 @@
                               "type": "Http",
                               "inputs": {
                                 "method": "GET",
-                                "uri": "@{concat('https://management.azure.com', workflow()['id'], '/runs/', first(body('Last_good_run')?['value'])?['name'], '/actions/State_out?api-version=2016-06-01')}",
+                                "uri": "@{concat(parameters('armEndpoint'), workflow()['id'], '/runs/', first(body('Last_good_run')?['value'])?['name'], '/actions/State_out?api-version=2016-06-01')}",
                                 "authentication": {
                                   "type": "ManagedServiceIdentity",
                                   "identity": "@parameters('miId')",
-                                  "audience": "https://management.azure.com/"
+                                  "audience": "@{parameters('armAudience')}"
                                 }
                               },
                               "runAfter": {}
@@ -4111,7 +4234,7 @@
                               "type": "Http",
                               "inputs": {
                                 "method": "POST",
-                                "uri": "https://management.azure.com/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01",
+                                "uri": "@{parameters('armEndpoint')}/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01",
                                 "headers": {
                                   "Content-Type": "application/json"
                                 },
@@ -4119,7 +4242,7 @@
                                 "authentication": {
                                   "type": "ManagedServiceIdentity",
                                   "identity": "@parameters('miId')",
-                                  "audience": "https://management.azure.com/"
+                                  "audience": "@{parameters('armAudience')}"
                                 }
                               },
                               "runAfter": {}
@@ -4298,6 +4421,8 @@
                     "firstLineEnd": "[indexOf(parameters('query'), '\n')]",
                     "exclusion": "[format('| where subscriptionId !in~ ({0})\n', join(map(parameters('excludedSubscriptionIds'), lambda('s', format('''{0}''', lambdaVariables('s')))), ', '))]",
                     "finalQuery": "[if(empty(parameters('excludedSubscriptionIds')), parameters('query'), format('{0}{1}{2}', substring(parameters('query'), 0, add(variables('firstLineEnd'), 1)), variables('exclusion'), substring(parameters('query'), add(variables('firstLineEnd'), 1))))]",
+                    "armAudience": "[environment().resourceManager]",
+                    "armEndpoint": "[replace(replace(format('{0}#', variables('armAudience')), '/#', ''), '#', '')]",
                     "baseDefinition": "[variables('$fxv#0')]",
                     "definition": "[union(variables('baseDefinition'), createObject('triggers', createObject('Recurrence', createObject('type', 'Recurrence', 'recurrence', createObject('frequency', 'Minute', 'interval', parameters('intervalMinutes')), 'runtimeConfiguration', createObject('concurrency', createObject('runs', 1, 'maximumWaitingRuns', 1))))))]"
                   },
@@ -4350,6 +4475,12 @@
                           },
                           "bootstrapSilent": {
                             "value": "[parameters('bootstrapSilent')]"
+                          },
+                          "armEndpoint": {
+                            "value": "[variables('armEndpoint')]"
+                          },
+                          "armAudience": {
+                            "value": "[variables('armAudience')]"
                           }
                         }
                       }
@@ -4522,7 +4653,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "4892516413395980467"
+              "templateHash": "6165050202929254419"
             }
           },
           "parameters": {
@@ -4649,7 +4780,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.44.1.10279",
-                      "templateHash": "5309551585121299384"
+                      "templateHash": "1111358962705038378"
                     }
                   },
                   "parameters": {
@@ -4779,6 +4910,14 @@
                         "intervalMinutes": {
                           "type": "Int",
                           "defaultValue": 1
+                        },
+                        "armEndpoint": {
+                          "type": "String",
+                          "defaultValue": "https://management.azure.com"
+                        },
+                        "armAudience": {
+                          "type": "String",
+                          "defaultValue": "https://management.azure.com/"
                         }
                       },
                       "triggers": {
@@ -4817,11 +4956,11 @@
                           "type": "Http",
                           "inputs": {
                             "method": "GET",
-                            "uri": "@{concat('https://management.azure.com', workflow()['id'], '/runs?api-version=2016-06-01&$top=1&$filter=', encodeUriComponent('status eq ''Succeeded'''))}",
+                            "uri": "@{concat(parameters('armEndpoint'), workflow()['id'], '/runs?api-version=2016-06-01&$top=1&$filter=', encodeUriComponent('status eq ''Succeeded'''))}",
                             "authentication": {
                               "type": "ManagedServiceIdentity",
                               "identity": "@parameters('miId')",
-                              "audience": "https://management.azure.com/"
+                              "audience": "@{parameters('armAudience')}"
                             }
                           },
                           "runAfter": {
@@ -4847,11 +4986,11 @@
                               "type": "Http",
                               "inputs": {
                                 "method": "GET",
-                                "uri": "@{concat('https://management.azure.com', workflow()['id'], '/runs/', first(body('Last_good_run')?['value'])?['name'], '/actions/State_out?api-version=2016-06-01')}",
+                                "uri": "@{concat(parameters('armEndpoint'), workflow()['id'], '/runs/', first(body('Last_good_run')?['value'])?['name'], '/actions/State_out?api-version=2016-06-01')}",
                                 "authentication": {
                                   "type": "ManagedServiceIdentity",
                                   "identity": "@parameters('miId')",
-                                  "audience": "https://management.azure.com/"
+                                  "audience": "@{parameters('armAudience')}"
                                 }
                               },
                               "runAfter": {}
@@ -4978,7 +5117,7 @@
                               "type": "Http",
                               "inputs": {
                                 "method": "POST",
-                                "uri": "https://management.azure.com/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01",
+                                "uri": "@{parameters('armEndpoint')}/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01",
                                 "headers": {
                                   "Content-Type": "application/json"
                                 },
@@ -4986,7 +5125,7 @@
                                 "authentication": {
                                   "type": "ManagedServiceIdentity",
                                   "identity": "@parameters('miId')",
-                                  "audience": "https://management.azure.com/"
+                                  "audience": "@{parameters('armAudience')}"
                                 }
                               },
                               "runAfter": {}
@@ -5165,6 +5304,8 @@
                     "firstLineEnd": "[indexOf(parameters('query'), '\n')]",
                     "exclusion": "[format('| where subscriptionId !in~ ({0})\n', join(map(parameters('excludedSubscriptionIds'), lambda('s', format('''{0}''', lambdaVariables('s')))), ', '))]",
                     "finalQuery": "[if(empty(parameters('excludedSubscriptionIds')), parameters('query'), format('{0}{1}{2}', substring(parameters('query'), 0, add(variables('firstLineEnd'), 1)), variables('exclusion'), substring(parameters('query'), add(variables('firstLineEnd'), 1))))]",
+                    "armAudience": "[environment().resourceManager]",
+                    "armEndpoint": "[replace(replace(format('{0}#', variables('armAudience')), '/#', ''), '#', '')]",
                     "baseDefinition": "[variables('$fxv#0')]",
                     "definition": "[union(variables('baseDefinition'), createObject('triggers', createObject('Recurrence', createObject('type', 'Recurrence', 'recurrence', createObject('frequency', 'Minute', 'interval', parameters('intervalMinutes')), 'runtimeConfiguration', createObject('concurrency', createObject('runs', 1, 'maximumWaitingRuns', 1))))))]"
                   },
@@ -5217,6 +5358,12 @@
                           },
                           "bootstrapSilent": {
                             "value": "[parameters('bootstrapSilent')]"
+                          },
+                          "armEndpoint": {
+                            "value": "[variables('armEndpoint')]"
+                          },
+                          "armAudience": {
+                            "value": "[variables('armAudience')]"
                           }
                         }
                       }
@@ -5389,7 +5536,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "14404987233888680928"
+              "templateHash": "16173704473663355611"
             }
           },
           "parameters": {
@@ -5514,7 +5661,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.44.1.10279",
-                      "templateHash": "5309551585121299384"
+                      "templateHash": "1111358962705038378"
                     }
                   },
                   "parameters": {
@@ -5644,6 +5791,14 @@
                         "intervalMinutes": {
                           "type": "Int",
                           "defaultValue": 1
+                        },
+                        "armEndpoint": {
+                          "type": "String",
+                          "defaultValue": "https://management.azure.com"
+                        },
+                        "armAudience": {
+                          "type": "String",
+                          "defaultValue": "https://management.azure.com/"
                         }
                       },
                       "triggers": {
@@ -5682,11 +5837,11 @@
                           "type": "Http",
                           "inputs": {
                             "method": "GET",
-                            "uri": "@{concat('https://management.azure.com', workflow()['id'], '/runs?api-version=2016-06-01&$top=1&$filter=', encodeUriComponent('status eq ''Succeeded'''))}",
+                            "uri": "@{concat(parameters('armEndpoint'), workflow()['id'], '/runs?api-version=2016-06-01&$top=1&$filter=', encodeUriComponent('status eq ''Succeeded'''))}",
                             "authentication": {
                               "type": "ManagedServiceIdentity",
                               "identity": "@parameters('miId')",
-                              "audience": "https://management.azure.com/"
+                              "audience": "@{parameters('armAudience')}"
                             }
                           },
                           "runAfter": {
@@ -5712,11 +5867,11 @@
                               "type": "Http",
                               "inputs": {
                                 "method": "GET",
-                                "uri": "@{concat('https://management.azure.com', workflow()['id'], '/runs/', first(body('Last_good_run')?['value'])?['name'], '/actions/State_out?api-version=2016-06-01')}",
+                                "uri": "@{concat(parameters('armEndpoint'), workflow()['id'], '/runs/', first(body('Last_good_run')?['value'])?['name'], '/actions/State_out?api-version=2016-06-01')}",
                                 "authentication": {
                                   "type": "ManagedServiceIdentity",
                                   "identity": "@parameters('miId')",
-                                  "audience": "https://management.azure.com/"
+                                  "audience": "@{parameters('armAudience')}"
                                 }
                               },
                               "runAfter": {}
@@ -5843,7 +5998,7 @@
                               "type": "Http",
                               "inputs": {
                                 "method": "POST",
-                                "uri": "https://management.azure.com/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01",
+                                "uri": "@{parameters('armEndpoint')}/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01",
                                 "headers": {
                                   "Content-Type": "application/json"
                                 },
@@ -5851,7 +6006,7 @@
                                 "authentication": {
                                   "type": "ManagedServiceIdentity",
                                   "identity": "@parameters('miId')",
-                                  "audience": "https://management.azure.com/"
+                                  "audience": "@{parameters('armAudience')}"
                                 }
                               },
                               "runAfter": {}
@@ -6030,6 +6185,8 @@
                     "firstLineEnd": "[indexOf(parameters('query'), '\n')]",
                     "exclusion": "[format('| where subscriptionId !in~ ({0})\n', join(map(parameters('excludedSubscriptionIds'), lambda('s', format('''{0}''', lambdaVariables('s')))), ', '))]",
                     "finalQuery": "[if(empty(parameters('excludedSubscriptionIds')), parameters('query'), format('{0}{1}{2}', substring(parameters('query'), 0, add(variables('firstLineEnd'), 1)), variables('exclusion'), substring(parameters('query'), add(variables('firstLineEnd'), 1))))]",
+                    "armAudience": "[environment().resourceManager]",
+                    "armEndpoint": "[replace(replace(format('{0}#', variables('armAudience')), '/#', ''), '#', '')]",
                     "baseDefinition": "[variables('$fxv#0')]",
                     "definition": "[union(variables('baseDefinition'), createObject('triggers', createObject('Recurrence', createObject('type', 'Recurrence', 'recurrence', createObject('frequency', 'Minute', 'interval', parameters('intervalMinutes')), 'runtimeConfiguration', createObject('concurrency', createObject('runs', 1, 'maximumWaitingRuns', 1))))))]"
                   },
@@ -6082,6 +6239,12 @@
                           },
                           "bootstrapSilent": {
                             "value": "[parameters('bootstrapSilent')]"
+                          },
+                          "armEndpoint": {
+                            "value": "[variables('armEndpoint')]"
+                          },
+                          "armAudience": {
+                            "value": "[variables('armAudience')]"
                           }
                         }
                       }

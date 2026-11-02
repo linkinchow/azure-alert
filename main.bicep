@@ -91,6 +91,11 @@ param cpuThreshold int = 80
 @description('M4: data disk bandwidth consumed threshold in percent.')
 param dataDiskBandwidthThreshold int = 100
 
+@description('Feishu rate limiting (code 11232 / HTTP 429): attempts per message before it is recorded as failed; the wait grows with each attempt (8 attempts take about 10 minutes).')
+@minValue(1)
+@maxValue(15)
+param feishuMaxAttempts int = 8
+
 var anyPush = (modules.?resourceHealth ?? false) || (modules.?metric ?? false) || (modules.?activityFailure ?? false)
 
 var alertCategoryMap = union(
@@ -119,6 +124,7 @@ module core 'modules/core/main.bicep' = {
     alertCategoryMap: alertCategoryMap
     sinkEnabled: sinkEnabled
     sinkWorkspaceResourceId: sinkWorkspaceResourceId
+    feishuMaxAttempts: feishuMaxAttempts
   }
 }
 

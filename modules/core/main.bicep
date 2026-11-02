@@ -31,6 +31,9 @@ param resourceHealthExcludedTitles array = [
 @description('Category -> display name shown in the card header; merged over the built-in Chinese names.')
 param categoryNames object = {}
 
+@description('Feishu rate limiting (code 11232 / HTTP 429): attempts per message, with a growing wait between attempts (8 attempts take about 10 minutes).')
+param feishuMaxAttempts int = 8
+
 var defaultCategoryNames = {
   'Flash.HostFailure': '主机故障'
   'Flash.DegradedHardware': '硬件降级'
@@ -76,7 +79,7 @@ var defaultAlertCategoryMap = {
   'svc:Log Alerts V2': 'LogAlert'
 }
 
-resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' = {
   name: '${prefix}-mi'
   location: location
   tags: tags
@@ -122,6 +125,9 @@ resource router 'Microsoft.Logic/workflows@2019-05-01' = {
       }
       resourceHealthExcludedTitles: {
         value: resourceHealthExcludedTitles
+      }
+      feishuMaxAttempts: {
+        value: feishuMaxAttempts
       }
       categoryNames: {
         value: union(defaultCategoryNames, categoryNames)

@@ -329,7 +329,7 @@
 
 | category | 中文名 | 来源 | 条件 | 严重度 |
 |---|---|---|---|---|
-| `SelfMonitor` | 告警系统自检 | 名称以 `-runs-failed` 结尾的 metric alert。Router 和每个 Pull Logic App（m1、m2-vm、m2-vmss、m5、m8）各有一条 | `RunsFailed` 15 分钟总计 > 0，每 5 分钟评估一次。常见原因：ARG 查询失败、飞书返回非 0 错误码、HTTP 失败、某个 category 没有可用的 webhook | Sev2 → 警告，恢复后推送"已恢复" |
+| `SelfMonitor` | 告警系统自检 | 名称以 `-runs-failed` 结尾的 metric alert。Router 和每个 Pull Logic App（m1、m2-vm、m2-vmss、m5、m8）各有一条 | `RunsFailed` 15 分钟总计 > 0，每 5 分钟评估一次。常见原因：ARG 查询失败、飞书返回非 0 错误码（限流错误 11232 会先等待重试，默认最多 8 次，仍失败才算）、HTTP 失败、某个 category 没有可用的 webhook | Sev2 → 警告，恢复后推送"已恢复" |
 | `ServiceHealth.Push` | 服务健康 | 客户自建的 Service Health 活动日志告警，接到了本方案的 Action Group | — | **不推送**：Router 直接丢弃。服务健康只以 M1（ARG 轮询）为准，避免同一事件出现一张内容更少的重复卡 |
 | `LogAlert` | 日志告警 | 客户自建的日志告警（monitoringService = `Log Alerts V2`） | — | 按告警级别 |
 | `Metric.Other` | 指标告警 | 客户自建的平台指标告警 | — | 按告警级别 |

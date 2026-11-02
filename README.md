@@ -71,6 +71,7 @@ test/                         测试参数（webhook 放在 *.local.json，不�
    | `pushSubscriptionIds` | 需要部署 M3 / M4 / M7 告警规则的订阅列表 |
    | `metricRegions` | M4 多资源 metric 规则的区域列表 |
    | `bootstrapSilent` | 默认 `true`：首次运行只记录指纹不发送，避免把历史事件一次性推进群 |
+   | `feishuMaxAttempts` | 默认 `8`：飞书限流时每条消息最多发送几次（见下文"飞书限流"） |
 
 ### 一键部署（Deploy to Azure）
 
@@ -96,6 +97,12 @@ test/                         测试参数（webhook 放在 *.local.json，不�
   - `title`、`limit`、`kind` 是保留字。
   - `resources` 和 `computeresources` 不能出现在同一查询里，`healthresources` 和 `computeresources` 也不能。
   - 所以 Flash 的 VM 和 VMSS 分成两个查询；VMSS 事件拿不到订阅名。
+- **飞书限流**：自定义机器人每个机器人每分钟 100 条、每秒 5 条，超出时返回错误码 11232。
+  - Router 收到 11232 或 HTTP 429 时，等待后重新发送同一条消息。等待时间随次数增加：15～30 秒、30～45 秒……；默认最多 8 次，约 10 分钟。
+  - 其他错误（例如 9499 消息格式错误）不重试，直接记为失败。
+  - 最终仍未发出的消息会记为失败，Router 这次运行标为失败，触发"告警系统自检"告警。
+  - 限流是按机器人计算的。告警量大的分类（例如 M7 操作失败、Spot 抢占）建议单独配一个 webhook，避免占用其他分类的额度。
+- **卡片正文不截断**：飞书单条消息的请求体上限是 20 KB，正文超过 4000 字时拆成多张连续卡片（"（1/N）""（续 2/N）"）。
 - **Flash 分类**：由 `modules/m2-flash/rules.json` 在部署时生成 KQL `case()` 表达式。
   - annotation 名按去掉 `LiveMigration(Not)Eligible` 后缀后的名字精确匹配。
   - 名字缺失时，按真实数据验证过的 summary 关键词兜底。
@@ -108,5 +115,12 @@ python scripts/send_events.py events.json                          # 把示例�
 python scripts/la_runs.py runs aa-m2-flash-vm 5                    # 查看运行记录和失败的动作
 python scripts/la_runs.py sent 3                                    # 查看 Router 最近发出的卡片和飞书的返回
 ```
+
+```bash
+az bicep build -f main.bicep --outfile out.json && python scripts/ci_check.py out.json   # 与 GitHub Actions 相同的检查
+```
+
+- `scripts/ci_check.py`：JSON 能否解析、`azuredeploy.json` 是否已按最新 Bicep 重新生成、各模块查询的占位符是否都已替换、部署向导的输出是否都对应模板参数。GitHub Actions（`.github/workflows/validate.yml`）在每次推送时运行它。
+- `test/mock-feishu.bicep`：模拟飞书 webhook 的 Logic App，按 URL 参数 `mode` 返回成功、限流（`always` / `half`）或格式错误（`bad`），用来测试限流重试，不会往真实飞书群发消息。
 
 测试参数：复制 `test/test.parameters.example.json` 为 `test/test.parameters.local.json` 并填入自己的订阅和资源组；webhook 放在 `test/webhooks.local.json`。所有 `*.local.json` 都在 .gitignore 中，不会提交。测试脚本通过环境变量 `AA_SUB`、`AA_RG`、`AA_ROUTER` 指定目标。
