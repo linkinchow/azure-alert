@@ -41,6 +41,14 @@
     "intervalMinutes": {
       "type": "Int",
       "defaultValue": 1
+    },
+    "armEndpoint": {
+      "type": "String",
+      "defaultValue": "https://management.azure.com"
+    },
+    "armAudience": {
+      "type": "String",
+      "defaultValue": "https://management.azure.com/"
     }
   },
   "triggers": {
@@ -79,11 +87,11 @@
       "type": "Http",
       "inputs": {
         "method": "GET",
-        "uri": "@{concat('https://management.azure.com', workflow()['id'], '/runs?api-version=2016-06-01&$top=1&$filter=', encodeUriComponent('status eq ''Succeeded'''))}",
+        "uri": "@{concat(parameters('armEndpoint'), workflow()['id'], '/runs?api-version=2016-06-01&$top=1&$filter=', encodeUriComponent('status eq ''Succeeded'''))}",
         "authentication": {
           "type": "ManagedServiceIdentity",
           "identity": "@parameters('miId')",
-          "audience": "https://management.azure.com/"
+          "audience": "@{parameters('armAudience')}"
         }
       },
       "runAfter": {
@@ -109,11 +117,11 @@
           "type": "Http",
           "inputs": {
             "method": "GET",
-            "uri": "@{concat('https://management.azure.com', workflow()['id'], '/runs/', first(body('Last_good_run')?['value'])?['name'], '/actions/State_out?api-version=2016-06-01')}",
+            "uri": "@{concat(parameters('armEndpoint'), workflow()['id'], '/runs/', first(body('Last_good_run')?['value'])?['name'], '/actions/State_out?api-version=2016-06-01')}",
             "authentication": {
               "type": "ManagedServiceIdentity",
               "identity": "@parameters('miId')",
-              "audience": "https://management.azure.com/"
+              "audience": "@{parameters('armAudience')}"
             }
           },
           "runAfter": {}
@@ -240,7 +248,7 @@
           "type": "Http",
           "inputs": {
             "method": "POST",
-            "uri": "https://management.azure.com/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01",
+            "uri": "@{parameters('armEndpoint')}/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01",
             "headers": {
               "Content-Type": "application/json"
             },
@@ -248,7 +256,7 @@
             "authentication": {
               "type": "ManagedServiceIdentity",
               "identity": "@parameters('miId')",
-              "audience": "https://management.azure.com/"
+              "audience": "@{parameters('armAudience')}"
             }
           },
           "runAfter": {}

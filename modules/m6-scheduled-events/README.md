@@ -26,6 +26,7 @@ scripts/enable-scheduled-events.sh --subscriptions "<订阅 ID>" --include-vmss 
 - feature flag 第一次注册后要等状态变成 Registered（可能要几分钟到几十分钟），再运行一次脚本。
 - 脚本不会修改"用户发起的重启 / 重新部署自动批准"设置。
 - 升级策略为 Automatic / Rolling 的 Uniform VMSS 改模型可能会触发实例更新，脚本不处理，请在维护窗口手动开启。
+- 已验证（2026-11-02）：在一台新建的 VM 上 `--apply` 开启成功，开启过程中 VM 没有重启。VMSS 的开启没有实测。
 
 下面是脚本做的事情，也可以手动执行：
 

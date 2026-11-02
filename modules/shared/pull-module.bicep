@@ -43,6 +43,10 @@ resource router 'Microsoft.Logic/workflows@2019-05-01' existing = {
   name: routerName
 }
 
+// ARM endpoint of the current cloud (no trailing slash) and the token audience (with it).
+var armAudience = environment().resourceManager
+var armEndpoint = replace(replace('${armAudience}#', '/#', ''), '#', '')
+
 var baseDefinition = loadJsonContent('pull-workflow.json')
 var definition = union(baseDefinition, {
   triggers: {
@@ -108,6 +112,12 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
       }
       bootstrapSilent: {
         value: bootstrapSilent
+      }
+      armEndpoint: {
+        value: armEndpoint
+      }
+      armAudience: {
+        value: armAudience
       }
     }
   }

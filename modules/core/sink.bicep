@@ -31,7 +31,7 @@ var columns = [
   { name: 'Event', type: 'dynamic' }
 ]
 
-resource newWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = if (empty(workspaceResourceId)) {
+resource newWorkspace 'Microsoft.OperationalInsights/workspaces@2025-02-01' = if (empty(workspaceResourceId)) {
   name: '${prefix}-law'
   location: location
   tags: tags
@@ -43,11 +43,11 @@ resource newWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = if
   }
 }
 
-resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = {
+resource workspace 'Microsoft.OperationalInsights/workspaces@2025-02-01' existing = {
   name: empty(workspaceResourceId) ? '${prefix}-law' : last(split(workspaceResourceId, '/'))
 }
 
-resource table 'Microsoft.OperationalInsights/workspaces/tables@2022-10-01' = {
+resource table 'Microsoft.OperationalInsights/workspaces/tables@2025-02-01' = {
   parent: workspace
   name: tableName
   properties: {
@@ -62,7 +62,7 @@ resource table 'Microsoft.OperationalInsights/workspaces/tables@2022-10-01' = {
   ]
 }
 
-resource dcr 'Microsoft.Insights/dataCollectionRules@2023-03-11' = {
+resource dcr 'Microsoft.Insights/dataCollectionRules@2024-03-11' = {
   name: '${prefix}-dcr-events'
   location: location
   tags: tags
