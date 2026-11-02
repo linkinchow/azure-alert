@@ -1,0 +1,51 @@
+containerserviceeventresources
+| where type =~ 'microsoft.containerservice/managedclusters/scheduledevents'
+| extend p = properties
+| extend lu = todatetime(p.lastUpdateTime)
+| where lu > ago(__LOOKBACK__)
+| extend src = tostring(p.eventSource), descr = tostring(p.description), st = tostring(p.eventStatus), detailsRaw = tostring(p.eventDetails),
+    cluster = tostring(p.resources[0]), eid = tostring(p.eventId), sched = todatetime(p.scheduledTime)
+| extend d = iff(detailsRaw startswith '{', parse_json(detailsRaw), dynamic({}))
+| extend upType = iff(detailsRaw startswith '{', tostring(d.type), coalesce(extract(@'of type: (\w+)', 1, detailsRaw), detailsRaw)), upStatus = tostring(d.status), err = tostring(d.error_message),
+    eolDate = tostring(d.eolDate), k8sVersion = tostring(d.kubernetesVersion)
+| extend evKind = case(
+    src == 'EOLNotification' and descr == 'KubernetesVersionOutOfSupport', 'OutOfSupport',
+    src == 'EOLNotification', 'EOLSoon',
+    st == 'Scheduled', 'UpgradeScheduled',
+    st in~ ('Failed', 'Canceled', 'Cancelled'), 'UpgradeNotSucceeded',
+    st == 'Completed' and upStatus =~ 'Skipped', 'UpgradeSkipped',
+    st == 'Completed' and isnotempty(upStatus) and upStatus !in~ ('Succeeded', 'Success'), 'UpgradeNotSucceeded',
+    'Routine')
+| where evKind in (__KINDS__)
+| extend upTypeCn = case(upType == 'K8sVersionUpgrade', 'Kubernetes 版本升级', upType == 'NodeOSUpgrade', '节点 OS 升级', upType),
+    stCn = case(st == 'Scheduled', '已计划', st == 'Started', '已开始', st == 'Completed', '已结束', st =~ 'Failed', '失败', st in~ ('Canceled', 'Cancelled'), '已取消', st),
+    upStatusCn = case(upStatus =~ 'Skipped', '已跳过', upStatus =~ 'Failed', '失败', upStatus in~ ('Succeeded', 'Success'), '成功', upStatus)
+| extend clusterName = tostring(split(cluster, '/')[8]), subId = tostring(split(cluster, '/')[2]), rg = tostring(split(cluster, '/')[4])
+| join kind=leftouter (resourcecontainers | where type =~ 'microsoft.resources/subscriptions' | project subId = subscriptionId, subName = name) on subId
+| extend eventId = case(
+    evKind == 'OutOfSupport', strcat('aks:', tolower(cluster), ':oos:', format_datetime(startofweek(now()), 'yyyy-MM-dd')),
+    evKind == 'EOLSoon', strcat('aks:', tolower(cluster), ':', descr, ':', eolDate),
+    strcat('aks:', eid, ':', st, ':', upStatus))
+| extend event = pack(
+    'schemaVersion', '1.0',
+    'eventId', eventId,
+    'source', pack('module', 'M8-AKS', 'channel', 'ARG', 'rawId', eid),
+    'category', iff(src == 'EOLNotification', 'AKS.VersionEOL', 'AKS.Upgrade'),
+    'severity', case(evKind in ('OutOfSupport', 'EOLSoon'), 'Warning', evKind == 'UpgradeNotSucceeded' and upStatus !~ 'Skipped', 'Warning', 'Informational'),
+    'status', 'New',
+    'initiator', 'Platform',
+    'title', strcat(clusterName, '：', case(src == 'EOLNotification', strcat('Kubernetes ', k8sVersion, iff(descr == 'KubernetesVersionOutOfSupport', ' 已超出支持期', ' 即将结束支持')), strcat(upTypeCn, ' ', stCn, iff(isempty(upStatusCn), '', strcat('（', upStatusCn, '）'))))),
+    'summary', case(
+        src == 'EOLNotification', strcat('Kubernetes ', k8sVersion, ' 的支持结束日期为 ', substring(eolDate, 0, 10), '，请规划升级。'),
+        isnotempty(err), strcat(upTypeCn, ' ', stCn, iff(isempty(upStatusCn), '', strcat('（', upStatusCn, '）')), '：', err),
+        strcat(upTypeCn, ' ', stCn, '。')),
+    'time', pack('eventTime', iff(src != 'EOLNotification' and isnotnull(sched) and sched > datetime(2000-01-01), sched, lu), 'lastUpdateTime', lu),
+    'resource', pack('id', cluster, 'type', 'microsoft.containerservice/managedclusters', 'name', clusterName, 'subscriptionId', subId, 'subscriptionName', subName, 'resourceGroup', rg),
+    'details', pack('eventSource', src, 'description', descr, 'eventStatus', st, 'upgradeType', upType, 'upgradeStatus', upStatus, 'error', err, 'eventDetails', detailsRaw),
+    'display', pack_array(
+        pack('k', '计划时间（北京时间）', 'v', iff(isnotnull(sched) and sched > datetime(2000-01-01) and src != 'EOLNotification', format_datetime(sched + 8h, 'yyyy-MM-dd HH:mm'), '')),
+        pack('k', '维护窗口（UTC）', 'v', iff(isempty(tostring(d.window_open_time)), '', strcat(tostring(d.window_open_time), ' ~ ', tostring(d.window_close_time)))),
+        pack('k', '支持结束日期', 'v', iff(isempty(eolDate), '', substring(eolDate, 0, 10))),
+        pack('k', 'Kubernetes 版本', 'v', k8sVersion)),
+    'links', pack('portal', strcat('https://portal.azure.com/#@/resource', cluster, '/overview')))
+| project eventId, event

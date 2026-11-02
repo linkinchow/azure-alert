@@ -1,0 +1,58 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "eastus2"
+    },
+    "resourceGroupName": {
+      "value": "rg-azure-alert-test"
+    },
+    "prefix": {
+      "value": "aat"
+    },
+    "readerScope": {
+      "value": "subscription"
+    },
+    "readerSubscriptionIds": {
+      "value": [
+        "<subscription-id>"
+      ]
+    },
+    "argScope": {
+      "value": {
+        "subscriptions": [
+          "<subscription-id>"
+        ]
+      }
+    },
+    "bootstrapSilent": {
+      "value": false
+    },
+    "fastLookback": {
+      "value": "2h"
+    },
+    "slowLookback": {
+      "value": "24h"
+    },
+    "pushSubscriptionIds": {
+      "value": [
+        "<subscription-id>"
+      ]
+    },
+    "pushResourceGroupName": {
+      "value": "rg-azure-alert-test"
+    },
+    "pushScopeToResourceGroup": {
+      "value": true
+    },
+    "metricRegions": {
+      "value": [
+        "eastus2"
+      ]
+    },
+    "sinkEnabled": {
+      "value": false
+    }
+  }
+}

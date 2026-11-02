@@ -1,0 +1,145 @@
+{
+  "description": "Project Flash annotation classification. names are matched exactly after stripping the LiveMigrationEligible/LiveMigrationNotEligible suffix (case-insensitive). summaryKeywords are only used when the change record carries no annotationName (same name as the previous annotation) and the snapshot cannot fill it; they mirror keywords validated against real annotation data. Rules are evaluated in order.",
+  "rules": [
+    {
+      "category": "Flash.LiveMigration",
+      "severity": "Warning",
+      "initiator": "Platform",
+      "names": [
+        "LiveMigrationFailure"
+      ],
+      "summaryKeywords": []
+    },
+    {
+      "category": "Flash.LiveMigration",
+      "severity": "Informational",
+      "initiator": "Platform",
+      "names": [
+        "LiveMigrationSucceeded"
+      ],
+      "summaryKeywords": [
+        "Live Migration operation"
+      ]
+    },
+    {
+      "category": "Flash.HostFailure",
+      "severity": "Critical",
+      "initiator": "Platform",
+      "names": [
+        "VirtualMachineHostCrashed",
+        "VirtualMachineHostRebootedForRepair",
+        "VirtualMachineMigrationInitiatedForRepair",
+        "NetworkUnhealthy",
+        "UnhealthyHostState"
+      ],
+      "summaryKeywords": [
+        "underlying",
+        "unexpected failure"
+      ]
+    },
+    {
+      "category": "Flash.DegradedHardware",
+      "severity": "Warning",
+      "initiator": "Platform",
+      "names": [
+        "VirtualMachinePossiblyDegradedDueToHardwareFailure",
+        "VirtualMachinePossiblyDegradedDueToHardwareFailureWithRedeployDeadline",
+        "PossiblyDegradedDueToHardwareFailureWithRedeployDeadline",
+        "VirtualMachineMigrationScheduledForDegradedHardware",
+        "VirtualMachineScheduledForServiceHealing",
+        "VirtualMachineScheduledForMigrationWithGracePeriod",
+        "AccelnetUnhealthy"
+      ],
+      "summaryKeywords": [
+        "disruptions",
+        "Accelerated"
+      ]
+    },
+    {
+      "category": "Flash.DegradedHardware",
+      "severity": "Informational",
+      "initiator": "Platform",
+      "names": [
+        "AccelnetHealthy",
+        "VirtualMachineMigratedDueToHardwareFailure"
+      ],
+      "summaryKeywords": []
+    },
+    {
+      "category": "Flash.PlannedFreeze",
+      "severity": "Warning",
+      "initiator": "Platform",
+      "names": [
+        "VirtualMachinePlannedFreezeFailed"
+      ],
+      "summaryKeywords": []
+    },
+    {
+      "category": "Flash.PlannedFreeze",
+      "severity": "Informational",
+      "initiator": "Platform",
+      "names": [
+        "VirtualMachinePlannedFreezeStarted",
+        "VirtualMachinePlannedFreezeSucceeded"
+      ],
+      "summaryKeywords": [
+        "applied"
+      ]
+    },
+    {
+      "category": "Flash.PlannedMaintenance",
+      "severity": "Warning",
+      "initiator": "Platform",
+      "names": [
+        "VirtualMachineMigrationInitiatedForPlannedMaintenance",
+        "VirtualMachineRebootInitiatedForPlannedMaintenance"
+      ],
+      "summaryKeywords": [
+        "orchestrated"
+      ]
+    },
+    {
+      "category": "Flash.VMCrash",
+      "severity": "Warning",
+      "initiator": "VM",
+      "names": [
+        "VirtualMachineCrashed"
+      ],
+      "summaryKeywords": [
+        "guest OS crash"
+      ]
+    },
+    {
+      "category": "Flash.StorageOffline",
+      "severity": "Critical",
+      "initiator": "Platform",
+      "names": [
+        "VirtualMachineStorageOffline"
+      ],
+      "summaryKeywords": [
+        "loss"
+      ]
+    },
+    {
+      "category": "Flash.ProvisioningTimeout",
+      "severity": "Warning",
+      "initiator": "Platform",
+      "names": [
+        "VirtualMachineProvisioningTimedOut"
+      ],
+      "summaryKeywords": [
+        "reimaging"
+      ]
+    },
+    {
+      "category": "Flash.SpotEviction",
+      "severity": "Informational",
+      "initiator": "Platform",
+      "names": [
+        "VirtualMachinePreempted"
+      ],
+      "summaryKeywords": [],
+      "enabled": true
+    }
+  ]
+}

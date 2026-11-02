@@ -1,0 +1,36 @@
+maintenanceresources
+| where type =~ 'microsoft.maintenance/scheduledevents'
+| extend p = properties
+| extend evType = tostring(p.EventType), st = tostring(p.EventStatus), src = tostring(p.EventSource), eid = tostring(p.EventId),
+    notBeforeRaw = tostring(p.NotBefore), dur = toint(p.DurationInSeconds), descr = tostring(p.Description), targets = p.Resources
+| where st in (__STATUSES__)
+| where src in (__SOURCES__)
+| extend rid = tostring(split(id, '/providers/microsoft.maintenance/')[0])
+| extend parts = split(rid, '/')
+| extend isVmss = rid contains '/virtualmachinescalesets/', rg = tostring(parts[4]), subId = tostring(parts[2]), targetName = tostring(parts[8])
+| extend notBefore = todatetime(notBeforeRaw)
+| extend typeCn = case(evType == 'Reboot', '重启', evType == 'Redeploy', '重新部署', evType == 'Freeze', '冻结', evType == 'Preempt', '抢占（Spot 驱逐）', evType == 'Terminate', '终止', evType),
+    stCn = case(st == 'Scheduled', '已计划', st == 'Started', '已开始', st == 'Completed', '已完成', st == 'Canceled', '已取消', st),
+    srcCn = case(src == 'Platform', '平台', src == 'User', '用户', src)
+| extend eventId = strcat('se:', eid, ':', st)
+| extend event = pack(
+    'schemaVersion', '1.0',
+    'eventId', eventId,
+    'source', pack('module', 'M6-ScheduledEvents', 'channel', 'ARG', 'rawId', id),
+    'category', strcat('ScheduledEvent.', evType),
+    'severity', case(src == 'User', 'Informational', evType in ('Reboot', 'Redeploy', 'Preempt', 'Terminate') and st in ('Scheduled', 'Started'), 'Warning', 'Informational'),
+    'status', iff(st in ('Completed', 'Canceled'), 'Resolved', 'New'),
+    'initiator', iff(src == 'User', 'Customer', 'Platform'),
+    'title', strcat(targetName, '：', typeCn, ' ', stCn),
+    'summary', strcat(descr, iff(isnull(notBefore), '', strcat('（最早开始时间 ', format_datetime(notBefore + 8h, 'yyyy-MM-dd HH:mm:ss'), ' 北京时间）'))),
+    'time', pack('eventTime', iff(isnull(notBefore), now(), notBefore)),
+    'resource', pack('id', rid, 'type', iff(isVmss, 'microsoft.compute/virtualmachinescalesets', 'microsoft.compute/virtualmachines'), 'name', targetName,
+        'subscriptionId', subId, 'resourceGroup', rg, 'region', location),
+    'details', pack('eventId', eid, 'eventType', evType, 'eventStatus', st, 'eventSource', src, 'notBefore', notBeforeRaw, 'durationInSeconds', dur, 'resources', targets),
+    'display', pack_array(
+        pack('k', '状态', 'v', stCn),
+        pack('k', '发起方', 'v', srcCn),
+        pack('k', '预计影响时长', 'v', iff(isnull(dur) or dur <= 0, '', strcat(tostring(dur), ' 秒'))),
+        pack('k', '受影响实例', 'v', strcat_array(targets, '、'))),
+    'links', pack('portal', strcat('https://portal.azure.com/#@/resource', rid, '/overview')))
+| project eventId, event

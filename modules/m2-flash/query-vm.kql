@@ -1,0 +1,51 @@
+healthresourcechanges
+| where properties.targetResourceType =~ 'microsoft.resourcehealth/resourceannotations'
+| extend ts = todatetime(properties.changeAttributes.timestamp)
+| where ts > ago(__LOOKBACK__)
+| where not(tostring(properties.targetResourceId) contains '/virtualMachineScaleSets/')
+| extend ridOrig = tostring(split(tostring(properties.targetResourceId), '/providers/Microsoft.ResourceHealth/resourceAnnotations/current')[0])
+| extend c = properties.changes
+| project rid = tolower(ridOrig), ridOrig, tsKey = strcat(format_datetime(ts, 'yyyy-MM-dd'), 'T', format_datetime(ts, 'HH:mm:ss.fff')), ts, chgId = id,
+    cName = tostring(split(tostring(c['properties.annotationName'].newValue), '//')[0]), cSummary = tostring(c['properties.summary'].newValue),
+    cReason = tostring(c['properties.reason'].newValue), cContext = tostring(c['properties.context'].newValue),
+    cImpact = tostring(c['properties.impactType'].newValue), cCat = tostring(c['properties.category'].newValue)
+| project rid, ridOrig, tsKey, chgId, name = cName, summary = cSummary, reason = cReason, context = cContext, impact = cImpact, flashCat = cCat
+| extend base = replace_regex(name, @'LiveMigration(Not)?Eligible$', ''), lmElig = extract(@'LiveMigration((Not)?Eligible)$', 1, name)
+| extend category = case(__CATEGORY__, '')
+| where isnotempty(category)
+| extend severity = case(__SEVERITY__, 'Warning'), initiator = case(__INITIATOR__, 'Platform')
+| extend subId = tostring(split(rid, '/')[2]), isVmss = rid contains '/virtualmachinescalesets/'
+| join kind=leftouter (
+    resources
+    | where type =~ 'microsoft.network/networkinterfaces' and isnotempty(properties.virtualMachine.id)
+    | project vmid = tolower(tostring(properties.virtualMachine.id)), ipcs = properties.ipConfigurations, nicLoc = location
+    | mv-expand ipc = ipcs limit 400
+    | summarize privateIPs = make_set(tostring(ipc.properties.privateIPAddress)), locs = make_set(nicLoc) by vmid
+  ) on $left.rid == $right.vmid
+| join kind=leftouter (resourcecontainers | where type =~ 'microsoft.resources/subscriptions' | project subId = subscriptionId, subName = name) on subId
+| extend parts = split(ridOrig, '/')
+| extend vmName = iff(isVmss, strcat(tostring(parts[8]), '_', tostring(parts[10])), tostring(parts[8])), rg = tostring(parts[4])
+| extend eventId = strcat('flash:', rid, '|', tsKey)
+| extend event = pack(
+    'schemaVersion', '1.0',
+    'eventId', eventId,
+    'source', pack('module', 'M2-Flash', 'channel', 'ARG', 'rawId', chgId),
+    'category', category,
+    'severity', severity,
+    'status', 'New',
+    'initiator', initiator,
+    'title', strcat(vmName, '：', iff(isempty(reason), iff(isempty(name), '平台事件', name), reason)),
+    'summary', summary,
+    'time', pack('eventTime', strcat(tsKey, 'Z')),
+    'resource', pack('id', ridOrig, 'type', iff(isVmss, 'microsoft.compute/virtualmachinescalesets/virtualmachines', 'microsoft.compute/virtualmachines'), 'name', vmName,
+        'subscriptionId', subId, 'subscriptionName', subName, 'resourceGroup', rg, 'region', tostring(locs[0])),
+    'details', pack('annotationName', name, 'liveMigrationEligibility', lmElig, 'reason', reason, 'impactType', impact, 'context', context, 'flashCategory', flashCat),
+    'enrichment', pack('privateIPs', privateIPs, 'vmssName', iff(isVmss, tostring(parts[8]), '')),
+    'display', pack_array(
+        pack('k', '平台事件', 'v', iff(isempty(name), '（变更记录未带名称，按描述归类）', name)),
+        pack('k', '影响', 'v', case(impact == 'Downtime Reboot', '停机重启', impact == 'Downtime Freeze', '短暂冻结', impact == 'Degraded', '性能降级', impact == 'Informational', '无影响（仅通知）', impact)),
+        pack('k', '发起方', 'v', case(context contains 'Platform', '平台', context contains 'VM', '虚拟机自身', context contains 'Customer' or context contains 'User', '用户', context)),
+        pack('k', '热迁移', 'v', case(lmElig == 'Eligible', '支持（平台会尝试热迁移）', lmElig == 'NotEligible', '不支持（建议尽快重新部署）', '')),
+        pack('k', '私网 IP', 'v', strcat_array(privateIPs, '、'))),
+    'links', pack('portal', strcat('https://portal.azure.com/#@/resource', ridOrig, '/resourceHealth')))
+| project eventId, event

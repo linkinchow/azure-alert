@@ -1,0 +1,274 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/0.1.2-preview/CreateUIDefinition.MultiVm.json#",
+  "handler": "Microsoft.Azure.CreateUIDef",
+  "version": "0.1.2-preview",
+  "parameters": {
+    "config": {
+      "isWizard": true,
+      "basics": {
+        "description": "**azure-alert**：把 Azure 平台事件（Service Health、Project Flash、Resource Health、Metric、Quota、AKS 等）统一推送到飞书。",
+        "location": {
+          "label": "中心资源组区域",
+          "visible": true
+        }
+      }
+    },
+    "basics": [
+      {
+        "name": "resourceGroupName",
+        "type": "Microsoft.Common.TextBox",
+        "label": "中心资源组名称",
+        "defaultValue": "rg-azure-alert",
+        "constraints": {
+          "required": true,
+          "regex": "^[-\\w\\._\\(\\)]{1,90}$",
+          "validationMessage": "1-90 个字母、数字、-、_、.、()"
+        }
+      },
+      {
+        "name": "prefix",
+        "type": "Microsoft.Common.TextBox",
+        "label": "资源名前缀",
+        "defaultValue": "aa",
+        "constraints": {
+          "required": true,
+          "regex": "^[a-z][a-z0-9-]{1,9}$",
+          "validationMessage": "2-10 个小写字母、数字或 -，以字母开头"
+        }
+      }
+    ],
+    "steps": [
+      {
+        "name": "modules",
+        "label": "告警模块",
+        "elements": [
+          {
+            "name": "serviceHealth",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "M1 Service Health（ARG，跨订阅）",
+            "defaultValue": true
+          },
+          {
+            "name": "flash",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "M2 Project Flash：VM / VMSS 平台事件（ARG，跨订阅）",
+            "defaultValue": true
+          },
+          {
+            "name": "resourceHealth",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "M3 Resource Health：全资源类型（每个订阅一条告警规则）",
+            "defaultValue": true
+          },
+          {
+            "name": "metric",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "M4 Metric 示例：VM CPU 使用率、数据盘带宽使用率（阈值可调）",
+            "defaultValue": true
+          },
+          {
+            "name": "quota",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "M5 Compute 配额（ARG，跨订阅）",
+            "defaultValue": true
+          },
+          {
+            "name": "scheduledEvents",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "M6 VM Scheduled Events（ARG；需要先注册 feature flag 并在 VM 上开启发布，见 modules/m6-scheduled-events/README.md）",
+            "defaultValue": true
+          },
+          {
+            "name": "activityFailure",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "M7 资源操作失败：所有操作，Error / Critical（每个订阅一条告警规则）",
+            "defaultValue": true
+          },
+          {
+            "name": "aks",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "M8 AKS 升级与版本 EOL（ARG，跨订阅）",
+            "defaultValue": true
+          }
+        ]
+      },
+      {
+        "name": "notify",
+        "label": "飞书通知",
+        "elements": [
+          {
+            "name": "defaultWebhook",
+            "type": "Microsoft.Common.PasswordBox",
+            "label": {
+              "password": "默认飞书 webhook",
+              "confirmPassword": "再次输入默认飞书 webhook（不显示）"
+            },
+            "constraints": {
+              "required": true,
+              "regex": "^https://open\\.(feishu\\.cn|larksuite\\.com)/open-apis/bot/v2/hook/.+$",
+              "validationMessage": "请输入飞书 / Lark 自定义机器人 webhook"
+            },
+            "options": {
+              "hideConfirmation": true
+            }
+          },
+          {
+            "name": "webhookOverrides",
+            "type": "Microsoft.Common.TextBox",
+            "label": "按分类路由（可选，JSON）",
+            "toolTip": "一类一群：{\"Flash.HostFailure\": \"https://...\", \"ServiceHealth\": \"https://...\"}。按完整分类、分类前缀、default 的顺序匹配。",
+            "defaultValue": "{}",
+            "multiLine": true,
+            "constraints": {
+              "required": true
+            }
+          }
+        ]
+      },
+      {
+        "name": "scope",
+        "label": "范围与权限",
+        "elements": [
+          {
+            "name": "subscriptionsApi",
+            "type": "Microsoft.Solutions.ArmApiControl",
+            "request": {
+              "method": "GET",
+              "path": "subscriptions?api-version=2022-12-01"
+            }
+          },
+          {
+            "name": "readerScope",
+            "type": "Microsoft.Common.DropDown",
+            "label": "ARG 读取权限（Reader）授予方式",
+            "defaultValue": "按订阅授予",
+            "constraints": {
+              "allowedValues": [
+                {
+                  "label": "按订阅授予",
+                  "value": "subscription"
+                },
+                {
+                  "label": "不授予（部署后用 scripts/grant-reader-mg.sh 在管理组上授予）",
+                  "value": "none"
+                }
+              ]
+            }
+          },
+          {
+            "name": "readerSubscriptionIds",
+            "type": "Microsoft.Common.DropDown",
+            "label": "要告警的订阅（Pull 模块读取范围，授予 Reader）",
+            "multiselect": true,
+            "selectAll": true,
+            "filter": true,
+            "visible": "[equals(steps('scope').readerScope, 'subscription')]",
+            "constraints": {
+              "allowedValues": "[map(steps('scope').subscriptionsApi.value, (item) => parse(concat('{\"label\":\"', item.displayName, ' (', item.subscriptionId, ')\",\"value\":\"', item.subscriptionId, '\"}')))]",
+              "required": true
+            },
+            "toolTip": "这些订阅会给告警托管身份授予 Reader，Pull 模块只读取这些订阅。"
+          },
+          {
+            "name": "excludedSubscriptionIds",
+            "type": "Microsoft.Common.DropDown",
+            "label": "排除的订阅（可选）",
+            "multiselect": true,
+            "selectAll": true,
+            "filter": true,
+            "visible": "[equals(steps('scope').readerScope, 'none')]",
+            "constraints": {
+              "allowedValues": "[map(steps('scope').subscriptionsApi.value, (item) => parse(concat('{\"label\":\"', item.displayName, ' (', item.subscriptionId, ')\",\"value\":\"', item.subscriptionId, '\"}')))]",
+              "required": false
+            },
+            "toolTip": "在管理组上授权时，管理组下不想告警的订阅。"
+          },
+          {
+            "name": "pushSubscriptionIds",
+            "type": "Microsoft.Common.DropDown",
+            "label": "部署 M3 / M4 / M7 告警规则的订阅",
+            "multiselect": true,
+            "selectAll": true,
+            "filter": true,
+            "visible": "true",
+            "constraints": {
+              "allowedValues": "[map(steps('scope').subscriptionsApi.value, (item) => parse(concat('{\"label\":\"', item.displayName, ' (', item.subscriptionId, ')\",\"value\":\"', item.subscriptionId, '\"}')))]",
+              "required": true
+            }
+          },
+          {
+            "name": "metricRegions",
+            "type": "Microsoft.Common.TextBox",
+            "label": "M4 metric 规则的区域（逗号分隔，例如 eastus2,westus3）",
+            "defaultValue": "[location()]",
+            "constraints": {
+              "required": true
+            }
+          },
+          {
+            "name": "cpuThreshold",
+            "type": "Microsoft.Common.TextBox",
+            "label": "M4 CPU 告警阈值（%，5 分钟平均）",
+            "defaultValue": "80",
+            "toolTip": "平台 CPU 指标在部分规格上到不了 100%（实测 D2s_v5 最高 83.3%），建议 80。",
+            "constraints": {
+              "required": true,
+              "regex": "^([1-9][0-9]?|100)$",
+              "validationMessage": "1-100 的整数"
+            }
+          },
+          {
+            "name": "dataDiskBandwidthThreshold",
+            "type": "Microsoft.Common.TextBox",
+            "label": "M4 数据盘带宽使用率告警阈值（%，5 分钟平均）",
+            "defaultValue": "100",
+            "constraints": {
+              "required": true,
+              "regex": "^([1-9][0-9]?|100)$",
+              "validationMessage": "1-100 的整数"
+            }
+          },
+          {
+            "name": "bootstrapSilent",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "首次运行静默（不推送历史事件）",
+            "defaultValue": true
+          },
+          {
+            "name": "sinkEnabled",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "事件落地到 Log Analytics 自定义表 AzureAlertEvents_CL",
+            "defaultValue": false
+          }
+        ]
+      }
+    ],
+    "outputs": {
+      "location": "[location()]",
+      "resourceGroupName": "[basics('resourceGroupName')]",
+      "prefix": "[basics('prefix')]",
+      "modules": {
+        "serviceHealth": "[steps('modules').serviceHealth]",
+        "flash": "[steps('modules').flash]",
+        "resourceHealth": "[steps('modules').resourceHealth]",
+        "metric": "[steps('modules').metric]",
+        "quota": "[steps('modules').quota]",
+        "activityFailure": "[steps('modules').activityFailure]",
+        "aks": "[steps('modules').aks]",
+        "scheduledEvents": "[steps('modules').scheduledEvents]"
+      },
+      "defaultWebhook": "[steps('notify').defaultWebhook]",
+      "webhooks": "[parse(steps('notify').webhookOverrides)]",
+      "readerScope": "[steps('scope').readerScope]",
+      "readerSubscriptionIds": "[if(equals(steps('scope').readerScope, 'subscription'), steps('scope').readerSubscriptionIds, parse('[]'))]",
+      "pushSubscriptionIds": "[steps('scope').pushSubscriptionIds]",
+      "metricRegions": "[split(toLower(replace(steps('scope').metricRegions, ' ', '')), ',')]",
+      "bootstrapSilent": "[steps('scope').bootstrapSilent]",
+      "sinkEnabled": "[steps('scope').sinkEnabled]",
+      "argScope": "[if(equals(steps('scope').readerScope, 'subscription'), parse(concat('{\"subscriptions\":', string(steps('scope').readerSubscriptionIds), '}')), parse('{}'))]",
+      "excludedSubscriptionIds": "[if(equals(steps('scope').readerScope, 'none'), coalesce(steps('scope').excludedSubscriptionIds, parse('[]')), parse('[]'))]",
+      "cpuThreshold": "[int(steps('scope').cpuThreshold)]",
+      "dataDiskBandwidthThreshold": "[int(steps('scope').dataDiskBandwidthThreshold)]"
+    }
+  }
+}

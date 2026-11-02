@@ -1,0 +1,838 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "webhooks": {
+      "type": "SecureObject",
+      "defaultValue": {}
+    },
+    "alertCategoryMap": {
+      "type": "Object",
+      "defaultValue": {}
+    },
+    "sinkEnabled": {
+      "type": "Bool",
+      "defaultValue": false
+    },
+    "sinkUrl": {
+      "type": "String",
+      "defaultValue": ""
+    },
+    "miId": {
+      "type": "String",
+      "defaultValue": ""
+    },
+    "categoryNames": {
+      "type": "Object",
+      "defaultValue": {}
+    },
+    "resourceHealthExcludedTitles": {
+      "type": "Array",
+      "defaultValue": []
+    }
+  },
+  "triggers": {
+    "manual": {
+      "type": "Request",
+      "kind": "Http",
+      "inputs": {
+        "schema": {}
+      }
+    }
+  },
+  "actions": {
+    "Is_alert": {
+      "type": "Compose",
+      "inputs": "@equals(triggerBody()?['schemaId'], 'azureMonitorCommonAlertSchema')",
+      "runAfter": {}
+    },
+    "Alert_target": {
+      "type": "Compose",
+      "inputs": "@if(empty(triggerBody()?['data']?['essentials']?['alertTargetIDs']), '', first(triggerBody()?['data']?['essentials']?['alertTargetIDs']))",
+      "runAfter": {
+        "Is_alert": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Alert_target_parts": {
+      "type": "Compose",
+      "inputs": "@split(concat(outputs('Alert_target'), '/////////'), '/')",
+      "runAfter": {
+        "Alert_target": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Status_text": {
+      "type": "Compose",
+      "inputs": "@{string(coalesce(triggerBody()?['data']?['alertContext']?['properties']?['statusMessage'], ''))}",
+      "runAfter": {
+        "Alert_target_parts": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Init_detail": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "detail",
+            "type": "string",
+            "value": ""
+          }
+        ]
+      },
+      "runAfter": {
+        "Status_text": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Parse_status": {
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "startsWith": [
+              "@trim(outputs('Status_text'))",
+              "{"
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "Set_detail": {
+          "type": "SetVariable",
+          "inputs": {
+            "name": "detail",
+            "value": "@{if(empty(json(outputs('Status_text'))?['error']?['details']), coalesce(json(outputs('Status_text'))?['error']?['message'], ''), coalesce(first(json(outputs('Status_text'))?['error']?['details'])?['message'], json(outputs('Status_text'))?['error']?['message'], ''))}"
+          },
+          "runAfter": {}
+        }
+      },
+      "else": {
+        "actions": {}
+      },
+      "runAfter": {
+        "Init_detail": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Activity_class": {
+      "type": "Compose",
+      "inputs": "@{if(or(contains(outputs('Status_text'), 'AllocationFailed'), contains(outputs('Status_text'), 'OverconstrainedAllocationRequest'), contains(outputs('Status_text'), 'OverconstrainedZonalAllocationRequest'), contains(outputs('Status_text'), 'SkuNotAvailable')), 'Capacity', if(or(contains(outputs('Status_text'), 'QuotaExceeded'), and(contains(outputs('Status_text'), 'OperationNotAllowed'), contains(toLower(outputs('Status_text')), 'quota'))), 'Quota', if(contains(outputs('Status_text'), 'RequestDisallowedByPolicy'), 'Policy', 'Other')))}",
+      "runAfter": {
+        "Parse_status": [
+          "Succeeded",
+          "Failed",
+          "Skipped"
+        ]
+      }
+    },
+    "Alert_category": {
+      "type": "Compose",
+      "inputs": "@coalesce(parameters('alertCategoryMap')?[coalesce(triggerBody()?['data']?['essentials']?['alertRule'], '-')], if(endsWith(coalesce(triggerBody()?['data']?['essentials']?['alertRule'], ''), '-runs-failed'), 'SelfMonitor', null), parameters('alertCategoryMap')?[concat('svc:', coalesce(triggerBody()?['data']?['essentials']?['monitoringService'], '-'))], 'Alert.Other')",
+      "runAfter": {
+        "Activity_class": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Alert_summary": {
+      "type": "Compose",
+      "inputs": "@{if(not(empty(triggerBody()?['data']?['alertContext']?['condition']?['allOf'])), concat(outputs('Metric_name_cn'), ' 当前 ', outputs('Metric_value'), '，触发条件 ', outputs('Metric_condition'), '。'), if(not(empty(triggerBody()?['data']?['alertContext']?['properties']?['currentHealthStatus'])), string(coalesce(triggerBody()?['data']?['alertContext']?['properties']?['details'], triggerBody()?['data']?['alertContext']?['properties']?['title'], '')), if(not(empty(triggerBody()?['data']?['alertContext']?['operationName'])), if(empty(variables('detail')), take(outputs('Status_text'), 1500), variables('detail')), string(coalesce(triggerBody()?['data']?['essentials']?['description'], '')))))}",
+      "runAfter": {
+        "Operation_cn": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Normalize": {
+      "type": "Compose",
+      "inputs": {
+        "schemaVersion": "1.0",
+        "eventId": "@{concat('alert:', triggerBody()?['data']?['essentials']?['alertId'], ':', triggerBody()?['data']?['essentials']?['monitorCondition'])}",
+        "source": {
+          "module": "@{concat('Push-', coalesce(triggerBody()?['data']?['essentials']?['monitoringService'], 'AzureMonitor'))}",
+          "channel": "ActionGroup",
+          "rawId": "@{triggerBody()?['data']?['essentials']?['alertId']}"
+        },
+        "category": "@{if(equals(outputs('Alert_category'), 'ActivityFailure'), concat('ActivityFailure.', outputs('Activity_class')), outputs('Alert_category'))}",
+        "severity": "@{if(equals(outputs('Alert_category'), 'ActivityFailure'), if(contains(createArray('Capacity', 'Quota'), outputs('Activity_class')), 'Warning', if(equals(triggerBody()?['data']?['alertContext']?['level'], 'Critical'), 'Critical', if(equals(triggerBody()?['data']?['alertContext']?['level'], 'Error'), 'Warning', 'Informational'))), if(equals(outputs('Alert_category'), 'ResourceHealth'), if(contains(createArray('Critical', 'Error'), triggerBody()?['data']?['alertContext']?['level']), 'Critical', if(equals(triggerBody()?['data']?['alertContext']?['level'], 'Warning'), 'Warning', 'Informational')), if(contains(createArray('Sev0', 'Sev1'), triggerBody()?['data']?['essentials']?['severity']), 'Critical', if(equals(triggerBody()?['data']?['essentials']?['severity'], 'Sev2'), 'Warning', 'Informational'))))}",
+        "status": "@{if(equals(triggerBody()?['data']?['essentials']?['monitorCondition'], 'Resolved'), 'Resolved', 'New')}",
+        "initiator": "@{if(equals(triggerBody()?['data']?['alertContext']?['properties']?['cause'], 'PlatformInitiated'), 'Platform', if(equals(triggerBody()?['data']?['alertContext']?['properties']?['cause'], 'UserInitiated'), 'Customer', 'Unknown'))}",
+        "title": "@{if(not(empty(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName'])), concat(outputs('Alert_target_parts')[8], ' ', outputs('Metric_name_cn'), ' ', outputs('Metric_value'), if(contains(string(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName']), 'Percentage'), '%', '')), if(not(empty(triggerBody()?['data']?['alertContext']?['properties']?['currentHealthStatus'])), concat(outputs('Alert_target_parts')[8], '：', coalesce(triggerBody()?['data']?['alertContext']?['properties']?['title'], triggerBody()?['data']?['alertContext']?['properties']?['currentHealthStatus'])), if(equals(outputs('Alert_category'), 'ActivityFailure'), concat(outputs('Alert_target_parts')[8], '：', outputs('Operation_cn'), ' 失败'), concat(coalesce(triggerBody()?['data']?['essentials']?['alertRule'], 'Azure Monitor 告警'), if(empty(outputs('Alert_target_parts')[8]), '', concat('：', outputs('Alert_target_parts')[8]))))))}",
+        "summary": "@{outputs('Alert_summary')}",
+        "time": {
+          "eventTime": "@{if(equals(triggerBody()?['data']?['essentials']?['monitorCondition'], 'Resolved'), coalesce(triggerBody()?['data']?['essentials']?['resolvedDateTime'], triggerBody()?['data']?['essentials']?['firedDateTime']), triggerBody()?['data']?['essentials']?['firedDateTime'])}",
+          "detectedTime": "@{utcNow()}"
+        },
+        "resource": {
+          "id": "@{outputs('Alert_target')}",
+          "name": "@{outputs('Alert_target_parts')[8]}",
+          "type": "@{concat(outputs('Alert_target_parts')[6], '/', outputs('Alert_target_parts')[7])}",
+          "subscriptionId": "@{outputs('Alert_target_parts')[2]}",
+          "resourceGroup": "@{outputs('Alert_target_parts')[4]}"
+        },
+        "details": {
+          "alertRule": "@{triggerBody()?['data']?['essentials']?['alertRule']}",
+          "signalType": "@{triggerBody()?['data']?['essentials']?['signalType']}",
+          "monitoringService": "@{triggerBody()?['data']?['essentials']?['monitoringService']}",
+          "alertContext": "@triggerBody()?['data']?['alertContext']"
+        },
+        "display": [
+          {
+            "k": "指标",
+            "v": "@{outputs('Metric_name_cn')}"
+          },
+          {
+            "k": "当前值",
+            "v": "@{outputs('Metric_value')}"
+          },
+          {
+            "k": "触发条件",
+            "v": "@{outputs('Metric_condition')}"
+          },
+          {
+            "k": "健康状态",
+            "v": "@{if(empty(triggerBody()?['data']?['alertContext']?['properties']?['currentHealthStatus']), '', concat(coalesce(outputs('Health_cn')?[coalesce(triggerBody()?['data']?['alertContext']?['properties']?['previousHealthStatus'], '-')], triggerBody()?['data']?['alertContext']?['properties']?['previousHealthStatus'], '?'), ' → ', coalesce(outputs('Health_cn')?[triggerBody()?['data']?['alertContext']?['properties']?['currentHealthStatus']], triggerBody()?['data']?['alertContext']?['properties']?['currentHealthStatus'])))}"
+          },
+          {
+            "k": "发起方",
+            "v": "@{coalesce(outputs('Health_cn')?[coalesce(triggerBody()?['data']?['alertContext']?['properties']?['cause'], '-')], '')}"
+          },
+          {
+            "k": "操作",
+            "v": "@{if(equals(outputs('Alert_category'), 'ActivityFailure'), coalesce(triggerBody()?['data']?['alertContext']?['operationName'], ''), '')}"
+          },
+          {
+            "k": "失败类型",
+            "v": "@{if(equals(outputs('Alert_category'), 'ActivityFailure'), outputs('Health_cn')?[outputs('Activity_class')], '')}"
+          },
+          {
+            "k": "调用方",
+            "v": "@{if(equals(outputs('Alert_category'), 'ActivityFailure'), coalesce(triggerBody()?['data']?['alertContext']?['caller'], ''), '')}"
+          },
+          {
+            "k": "告警规则",
+            "v": "@{if(or(not(empty(triggerBody()?['data']?['alertContext']?['condition']?['allOf'])), equals(outputs('Alert_category'), 'ResourceHealth'), equals(outputs('Alert_category'), 'ActivityFailure')), '', coalesce(triggerBody()?['data']?['essentials']?['alertRule'], ''))}"
+          }
+        ],
+        "links": {
+          "portal": "@{if(empty(outputs('Alert_target')), 'https://portal.azure.com/#view/Microsoft_Azure_Monitoring/AzureMonitoringBrowseBlade/~/alertsV2', concat('https://portal.azure.com/#@/resource', outputs('Alert_target')))}"
+        }
+      },
+      "runAfter": {
+        "Alert_summary": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Events": {
+      "type": "Compose",
+      "inputs": "@if(outputs('Is_alert'), if(or(equals(outputs('Alert_category'), 'ServiceHealth.Push'), and(equals(outputs('Alert_category'), 'ResourceHealth'), contains(parameters('resourceHealthExcludedTitles'), coalesce(triggerBody()?['data']?['alertContext']?['properties']?['title'], '-')))), json('[]'), createArray(outputs('Normalize'))), coalesce(triggerBody()?['events'], json('[]')))",
+      "runAfter": {
+        "Normalize": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Response": {
+      "type": "Response",
+      "kind": "Http",
+      "inputs": {
+        "statusCode": 202,
+        "body": {
+          "accepted": "@length(outputs('Events'))"
+        }
+      },
+      "runAfter": {
+        "Events": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Init_failures": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "failures",
+            "type": "array",
+            "value": []
+          }
+        ]
+      },
+      "runAfter": {
+        "Response": [
+          "Succeeded"
+        ]
+      }
+    },
+    "For_each_event": {
+      "type": "Foreach",
+      "foreach": "@outputs('Events')",
+      "runtimeConfiguration": {
+        "concurrency": {
+          "repetitions": 1
+        }
+      },
+      "actions": {
+        "Webhook": {
+          "type": "Compose",
+          "inputs": "@coalesce(parameters('webhooks')?[coalesce(items('For_each_event')?['category'], '-')], parameters('webhooks')?[first(split(coalesce(items('For_each_event')?['category'], '-'), '.'))], parameters('webhooks')?['default'], '')",
+          "runAfter": {}
+        },
+        "Base_fields": {
+          "type": "Compose",
+          "inputs": [
+            {
+              "k": "时间（北京时间）",
+              "v": "@{if(empty(items('For_each_event')?['time']?['eventTime']), '', convertTimeZone(items('For_each_event')?['time']?['eventTime'], 'UTC', 'China Standard Time', 'yyyy-MM-dd HH:mm:ss'))}"
+            },
+            {
+              "k": "资源",
+              "v": "@{if(contains(coalesce(items('For_each_event')?['title'], ''), coalesce(items('For_each_event')?['resource']?['name'], '#none#')), '', coalesce(items('For_each_event')?['resource']?['name'], ''))}"
+            },
+            {
+              "k": "订阅",
+              "v": "@{if(empty(items('For_each_event')?['impacted']?['subscriptions']), coalesce(items('For_each_event')?['resource']?['subscriptionName'], items('For_each_event')?['resource']?['subscriptionId'], ''), concat(string(length(items('For_each_event')?['impacted']?['subscriptions'])), ' 个：', join(take(items('For_each_event')?['impacted']?['subscriptions'], 10), '、')))}"
+            },
+            {
+              "k": "资源组",
+              "v": "@{coalesce(items('For_each_event')?['resource']?['resourceGroup'], '')}"
+            },
+            {
+              "k": "区域",
+              "v": "@{if(not(empty(items('For_each_event')?['resource']?['region'])), items('For_each_event')?['resource']?['region'], if(empty(items('For_each_event')?['impacted']?['regions']), '', concat(join(take(items('For_each_event')?['impacted']?['regions'], 8), '、'), if(greater(length(items('For_each_event')?['impacted']?['regions']), 8), concat(' 等 ', string(length(items('For_each_event')?['impacted']?['regions'])), ' 个区域'), ''))))}"
+            }
+          ],
+          "runAfter": {
+            "Webhook": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Display_fields": {
+          "type": "Query",
+          "inputs": {
+            "from": "@union(outputs('Base_fields'), coalesce(items('For_each_event')?['display'], json('[]')))",
+            "where": "@and(not(empty(item()?['v'])), not(equals(item()?['v'], '-')), not(equals(item()?['v'], ' / ')))"
+          },
+          "runAfter": {
+            "Base_fields": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Card": {
+          "type": "Compose",
+          "inputs": {
+            "msg_type": "interactive",
+            "card": {
+              "config": {
+                "wide_screen_mode": true
+              },
+              "header": {
+                "template": "@{if(equals(items('For_each_event')?['status'], 'Resolved'), 'green', if(equals(items('For_each_event')?['severity'], 'Critical'), 'red', if(equals(items('For_each_event')?['severity'], 'Warning'), 'orange', 'blue')))}",
+                "title": {
+                  "tag": "plain_text",
+                  "content": "@{concat(if(equals(items('For_each_event')?['status'], 'Resolved'), '已恢复', if(equals(items('For_each_event')?['severity'], 'Critical'), '严重', if(equals(items('For_each_event')?['severity'], 'Warning'), '警告', '提示'))), '｜', coalesce(parameters('categoryNames')?[coalesce(items('For_each_event')?['category'], '-')], items('For_each_event')?['category']), '｜', take(coalesce(items('For_each_event')?['title'], ''), 150), if(greater(length(outputs('Summary_parts')), 1), concat('（1/', string(length(outputs('Summary_parts'))), '）'), ''))}"
+                }
+              },
+              "elements": [
+                {
+                  "tag": "div",
+                  "text": {
+                    "tag": "lark_md",
+                    "content": "@{join(body('Card_fields'), '\n')}"
+                  }
+                },
+                {
+                  "tag": "hr"
+                },
+                {
+                  "tag": "div",
+                  "text": {
+                    "tag": "lark_md",
+                    "content": "@{first(outputs('Summary_parts'))}"
+                  }
+                },
+                {
+                  "tag": "action",
+                  "actions": [
+                    {
+                      "tag": "button",
+                      "type": "primary",
+                      "text": {
+                        "tag": "plain_text",
+                        "content": "在 Azure 门户中查看"
+                      },
+                      "url": "@{coalesce(items('For_each_event')?['links']?['portal'], 'https://portal.azure.com')}"
+                    }
+                  ]
+                },
+                {
+                  "tag": "note",
+                  "elements": [
+                    {
+                      "tag": "plain_text",
+                      "content": "@{concat('Azure 告警 · 来源 ', coalesce(items('For_each_event')?['source']?['module'], '-'), ' · ', coalesce(items('For_each_event')?['source']?['channel'], '-'))}"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "runAfter": {
+            "Summary_parts": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Has_webhook": {
+          "type": "If",
+          "expression": {
+            "and": [
+              {
+                "not": {
+                  "equals": [
+                    "@outputs('Webhook')",
+                    ""
+                  ]
+                }
+              }
+            ]
+          },
+          "actions": {
+            "Post_card": {
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "@{outputs('Webhook')}",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": "@outputs('Card')"
+              },
+              "runtimeConfiguration": {
+                "secureData": {
+                  "properties": [
+                    "inputs"
+                  ]
+                }
+              },
+              "runAfter": {}
+            },
+            "Card_rejected": {
+              "type": "If",
+              "expression": {
+                "and": [
+                  {
+                    "not": {
+                      "equals": [
+                        "@coalesce(body('Post_card')?['code'], body('Post_card')?['StatusCode'], 0)",
+                        0
+                      ]
+                    }
+                  }
+                ]
+              },
+              "actions": {
+                "Record_rejected": {
+                  "type": "AppendToArrayVariable",
+                  "inputs": {
+                    "name": "failures",
+                    "value": {
+                      "eventId": "@items('For_each_event')?['eventId']",
+                      "response": "@body('Post_card')"
+                    }
+                  },
+                  "runAfter": {}
+                }
+              },
+              "else": {
+                "actions": {}
+              },
+              "runAfter": {
+                "Post_card": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Record_http_failure": {
+              "type": "AppendToArrayVariable",
+              "inputs": {
+                "name": "failures",
+                "value": {
+                  "eventId": "@items('For_each_event')?['eventId']",
+                  "status": "@outputs('Post_card')?['statusCode']"
+                }
+              },
+              "runAfter": {
+                "Post_card": [
+                  "Failed",
+                  "TimedOut"
+                ]
+              }
+            },
+            "More_parts": {
+              "type": "Foreach",
+              "foreach": "@skip(range(0, length(outputs('Summary_parts'))), 1)",
+              "runtimeConfiguration": {
+                "concurrency": {
+                  "repetitions": 1
+                }
+              },
+              "actions": {
+                "Part_card": {
+                  "type": "Compose",
+                  "inputs": {
+                    "msg_type": "interactive",
+                    "card": {
+                      "config": {
+                        "wide_screen_mode": true
+                      },
+                      "header": {
+                        "template": "@{if(equals(items('For_each_event')?['status'], 'Resolved'), 'green', if(equals(items('For_each_event')?['severity'], 'Critical'), 'red', if(equals(items('For_each_event')?['severity'], 'Warning'), 'orange', 'blue')))}",
+                        "title": {
+                          "tag": "plain_text",
+                          "content": "@{concat(if(equals(items('For_each_event')?['status'], 'Resolved'), '已恢复', if(equals(items('For_each_event')?['severity'], 'Critical'), '严重', if(equals(items('For_each_event')?['severity'], 'Warning'), '警告', '提示'))), '｜', coalesce(parameters('categoryNames')?[coalesce(items('For_each_event')?['category'], '-')], items('For_each_event')?['category']), '｜', take(coalesce(items('For_each_event')?['title'], ''), 150), '（续 ', string(add(items('More_parts'), 1)), '/', string(length(outputs('Summary_parts'))), '）')}"
+                        }
+                      },
+                      "elements": [
+                        {
+                          "tag": "div",
+                          "text": {
+                            "tag": "lark_md",
+                            "content": "@{outputs('Summary_parts')[items('More_parts')]}"
+                          }
+                        },
+                        {
+                          "tag": "note",
+                          "elements": [
+                            {
+                              "tag": "plain_text",
+                              "content": "@{concat('Azure 告警 · 来源 ', coalesce(items('For_each_event')?['source']?['module'], '-'), ' · ', coalesce(items('For_each_event')?['source']?['channel'], '-'))}"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "runAfter": {}
+                },
+                "Post_part": {
+                  "type": "Http",
+                  "inputs": {
+                    "method": "POST",
+                    "uri": "@{outputs('Webhook')}",
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "body": "@outputs('Part_card')"
+                  },
+                  "runtimeConfiguration": {
+                    "secureData": {
+                      "properties": [
+                        "inputs"
+                      ]
+                    }
+                  },
+                  "runAfter": {
+                    "Part_card": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Part_rejected": {
+                  "type": "If",
+                  "expression": {
+                    "and": [
+                      {
+                        "not": {
+                          "equals": [
+                            "@coalesce(body('Post_part')?['code'], body('Post_part')?['StatusCode'], 0)",
+                            0
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  "actions": {
+                    "Record_part_rejected": {
+                      "type": "AppendToArrayVariable",
+                      "inputs": {
+                        "name": "failures",
+                        "value": {
+                          "eventId": "@items('For_each_event')?['eventId']",
+                          "part": "@items('More_parts')",
+                          "response": "@body('Post_part')"
+                        }
+                      },
+                      "runAfter": {}
+                    }
+                  },
+                  "else": {
+                    "actions": {}
+                  },
+                  "runAfter": {
+                    "Post_part": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Record_part_failure": {
+                  "type": "AppendToArrayVariable",
+                  "inputs": {
+                    "name": "failures",
+                    "value": {
+                      "eventId": "@items('For_each_event')?['eventId']",
+                      "part": "@items('More_parts')",
+                      "status": "@outputs('Post_part')?['statusCode']"
+                    }
+                  },
+                  "runAfter": {
+                    "Post_part": [
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  }
+                }
+              },
+              "runAfter": {
+                "Card_rejected": [
+                  "Succeeded"
+                ]
+              }
+            }
+          },
+          "else": {
+            "actions": {
+              "Record_no_webhook": {
+                "type": "AppendToArrayVariable",
+                "inputs": {
+                  "name": "failures",
+                  "value": {
+                    "eventId": "@items('For_each_event')?['eventId']",
+                    "error": "no webhook configured for category",
+                    "category": "@items('For_each_event')?['category']"
+                  }
+                },
+                "runAfter": {}
+              }
+            }
+          },
+          "runAfter": {
+            "Card": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Card_fields": {
+          "type": "Select",
+          "inputs": {
+            "from": "@body('Display_fields')",
+            "select": "@concat('**', item()?['k'], '**：', item()?['v'])"
+          },
+          "runAfter": {
+            "Display_fields": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Summary_parts": {
+          "type": "Compose",
+          "inputs": "@if(empty(items('For_each_event')?['summary']), createArray('（无详细说明）'), chunk(items('For_each_event')?['summary'], 4000))",
+          "runAfter": {
+            "Card_fields": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runAfter": {
+        "Init_failures": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Sink_enabled": {
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "equals": [
+              "@parameters('sinkEnabled')",
+              true
+            ]
+          },
+          {
+            "greater": [
+              "@length(outputs('Events'))",
+              0
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "Sink_rows": {
+          "type": "Select",
+          "inputs": {
+            "from": "@outputs('Events')",
+            "select": {
+              "TimeGenerated": "@{utcNow()}",
+              "EventId": "@item()?['eventId']",
+              "Module": "@item()?['source']?['module']",
+              "Channel": "@item()?['source']?['channel']",
+              "Category": "@item()?['category']",
+              "Severity": "@item()?['severity']",
+              "Status": "@item()?['status']",
+              "Initiator": "@item()?['initiator']",
+              "Title": "@item()?['title']",
+              "Summary": "@item()?['summary']",
+              "EventTime": "@item()?['time']?['eventTime']",
+              "DetectedTime": "@item()?['time']?['detectedTime']",
+              "ResourceId": "@item()?['resource']?['id']",
+              "SubscriptionId": "@item()?['resource']?['subscriptionId']",
+              "Event": "@item()"
+            }
+          },
+          "runAfter": {}
+        },
+        "Post_sink": {
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "@parameters('sinkUrl')",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "@body('Sink_rows')",
+            "authentication": {
+              "type": "ManagedServiceIdentity",
+              "identity": "@parameters('miId')",
+              "audience": "https://monitor.azure.com/"
+            }
+          },
+          "runAfter": {
+            "Sink_rows": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "else": {
+        "actions": {}
+      },
+      "runAfter": {
+        "For_each_event": [
+          "Succeeded",
+          "Failed"
+        ]
+      }
+    },
+    "Any_failures": {
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "greater": [
+              "@length(variables('failures'))",
+              0
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "Fail_run": {
+          "type": "Terminate",
+          "inputs": {
+            "runStatus": "Failed",
+            "runError": {
+              "code": "DeliveryFailed",
+              "message": "@{string(variables('failures'))}"
+            }
+          },
+          "runAfter": {}
+        }
+      },
+      "else": {
+        "actions": {}
+      },
+      "runAfter": {
+        "Sink_enabled": [
+          "Succeeded",
+          "Failed",
+          "Skipped"
+        ]
+      }
+    },
+    "Metric_name_cn": {
+      "type": "Compose",
+      "inputs": "@{if(empty(triggerBody()?['data']?['alertContext']?['condition']?['allOf']), '', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName'], 'Percentage CPU'), 'CPU 使用率', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName'], 'Data Disk Bandwidth Consumed Percentage'), '数据盘带宽使用率', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName'], 'Data Disk IOPS Consumed Percentage'), '数据盘 IOPS 使用率', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName'], 'RunsFailed'), '运行失败次数', coalesce(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName'], '查询结果'))))))}",
+      "runAfter": {
+        "Alert_category": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Metric_value": {
+      "type": "Compose",
+      "inputs": "@{if(empty(triggerBody()?['data']?['alertContext']?['condition']?['allOf']), '', formatNumber(float(coalesce(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricValue'], 0)), '0.##'))}",
+      "runAfter": {
+        "Metric_name_cn": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Metric_condition": {
+      "type": "Compose",
+      "inputs": "@{if(empty(triggerBody()?['data']?['alertContext']?['condition']?['allOf']), '', concat(if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['operator'], 'GreaterThanOrEqual'), '≥ ', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['operator'], 'GreaterThan'), '> ', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['operator'], 'LessThan'), '< ', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['operator'], 'LessThanOrEqual'), '≤ ', concat(string(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['operator']), ' '))))), string(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['threshold']), '（', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['timeAggregation'], 'Average'), '平均值', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['timeAggregation'], 'Total'), '总计', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['timeAggregation'], 'Maximum'), '最大值', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['timeAggregation'], 'Count'), '计数', string(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['timeAggregation']))))), '，', replace(replace(replace(replace(replace(replace(string(triggerBody()?['data']?['alertContext']?['condition']?['windowSize']), 'PT', ''), 'P', ''), 'T', ''), 'D', ' 天'), 'M', ' 分钟'), 'H', ' 小时'), '）'))}",
+      "runAfter": {
+        "Metric_value": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Health_cn": {
+      "type": "Compose",
+      "inputs": {
+        "Available": "可用",
+        "Unavailable": "不可用",
+        "Degraded": "已降级",
+        "Unknown": "未知",
+        "PlatformInitiated": "平台",
+        "UserInitiated": "用户",
+        "Capacity": "容量不足",
+        "Quota": "配额不足",
+        "Policy": "策略拒绝（Azure Policy）",
+        "Other": "其他",
+        "op:start": "启动",
+        "op:restart": "重启",
+        "op:deallocate": "释放",
+        "op:poweroff": "关机",
+        "op:redeploy": "重新部署",
+        "op:listkeys": "读取密钥"
+      },
+      "runAfter": {
+        "Metric_condition": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Operation_cn": {
+      "type": "Compose",
+      "inputs": "@{if(empty(triggerBody()?['data']?['alertContext']?['operationName']), '', if(equals(last(split(coalesce(triggerBody()?['data']?['alertContext']?['operationName'], ''), '/')), 'write'), '创建/更新', if(equals(last(split(coalesce(triggerBody()?['data']?['alertContext']?['operationName'], ''), '/')), 'delete'), '删除', if(and(equals(last(split(coalesce(triggerBody()?['data']?['alertContext']?['operationName'], ''), '/')), 'action'), greater(length(split(coalesce(triggerBody()?['data']?['alertContext']?['operationName'], ''), '/')), 1)), coalesce(outputs('Health_cn')?[concat('op:', toLower(split(coalesce(triggerBody()?['data']?['alertContext']?['operationName'], ''), '/')[sub(length(split(coalesce(triggerBody()?['data']?['alertContext']?['operationName'], ''), '/')), 2)]))], split(coalesce(triggerBody()?['data']?['alertContext']?['operationName'], ''), '/')[sub(length(split(coalesce(triggerBody()?['data']?['alertContext']?['operationName'], ''), '/')), 2)]), last(split(coalesce(triggerBody()?['data']?['alertContext']?['operationName'], ''), '/'))))))}",
+      "runAfter": {
+        "Health_cn": [
+          "Succeeded"
+        ]
+      }
+    }
+  },
+  "outputs": {}
+}

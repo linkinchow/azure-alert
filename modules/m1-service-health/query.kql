@@ -1,0 +1,48 @@
+servicehealthresources
+| where type =~ 'microsoft.resourcehealth/events'
+| extend p = properties
+| extend lu = datetime(0001-01-01) + tolong(p.LastUpdateTime) * 1tick, st = datetime(0001-01-01) + tolong(p.ImpactStartTime) * 1tick, mtRaw = datetime(0001-01-01) + tolong(p.ImpactMitigationTime) * 1tick
+| where lu > ago(__LOOKBACK__)
+| extend eventType = tostring(p.EventType)
+| where eventType in (__EVENT_TYPES__)
+| extend trackingId = tostring(p.TrackingId), status = tostring(p.Status), level = tostring(p.EventLevel), subType = tostring(p.EventSubType), tags = tostring(p.EventTags),
+    mt = iff(mtRaw > datetime(2000-01-01), mtRaw, datetime(null)), evTitle = tostring(p.Title), summaryHtml = iff(strlen(tostring(p.Description)) > strlen(tostring(p.Summary)), tostring(p.Description), tostring(p.Summary)), impact = tostring(p.Impact),
+    sensitive = tostring(p.isEventSensitive)
+| extend fp = hash_sha256(strcat(status, '|', tags, '|', tostring(mt), '|', tostring(p.Description), '|', summaryHtml))
+| summarize subs = make_set(subscriptionId), lu = max(lu), titles = make_set(evTitle), summaries = make_set(summaryHtml), impacts = make_set(impact), sens = make_set(sensitive)
+    by trackingId, fp, eventType, status, level, subType, tags, st, mt
+| extend evTitle = tostring(titles[0]), summaryHtml = tostring(summaries[0]), impactAll = replace_string(strcat_array(impacts, ','), @'\\', @'\'), sensitive = tostring(sens[0])
+| join kind=leftouter (
+    servicehealthresources
+    | where type =~ 'microsoft.resourcehealth/events/impactedresources'
+    | extend irTracking = tostring(split(tostring(split(id, '/events/')[1]), '/')[0])
+    | summarize irCount = count(), irList = make_set(strcat(tostring(properties.resourceGroup), '/', tostring(properties.resourceName)), 10) by irTracking
+  ) on $left.trackingId == $right.irTracking
+| extend services = extract_all(@'"ImpactedService":"([^"]+)"', impactAll), regions = extract_all(@'"ImpactedRegion":"([^"]+)"', impactAll)
+| extend summary = trim(@'\s+', replace_regex(replace_regex(replace_regex(replace_string(replace_string(summaryHtml, '&nbsp;', ' '), '&amp;', '&'), @'<(br|/p|/li|/h[1-6])[^>]*>', '\n'), @'<[^>]+>', ''), @'\n\s*\n+', '\n'))
+| extend updateType = case(status =~ 'Resolved', 'Resolved', tags contains 'PIR', 'PIR', isnotnull(mt) and mt <= now(), 'Mitigated', 'Active')
+| extend severity = case(level in~ ('Critical', 'Error'), 'Critical', level =~ 'Warning' or eventType == 'SecurityAdvisory', 'Warning', 'Informational')
+| extend eventId = strcat('sh:', trackingId, ':', substring(fp, 0, 16))
+| extend event = pack(
+    'schemaVersion', '1.0',
+    'eventId', eventId,
+    'source', pack('module', 'M1-ServiceHealth', 'channel', 'ARG', 'rawId', trackingId),
+    'category', strcat('ServiceHealth.', eventType),
+    'severity', severity,
+    'status', iff(status =~ 'Resolved', 'Resolved', 'Updated'),
+    'initiator', 'Platform',
+    'title', strcat(trackingId, ' ', trim(@'\s+', evTitle)),
+    'summary', summary,
+    'time', pack('eventTime', lu, 'impactStartTime', st),
+    'impacted', pack('subscriptions', subs, 'services', set_union(services, dynamic([])), 'regions', set_union(regions, dynamic([])), 'resourceCount', irCount, 'resources', irList),
+    'details', pack('trackingId', trackingId, 'eventType', eventType, 'eventSubType', subType, 'eventLevel', level, 'updateType', updateType,
+        'eventTags', tags, 'impactMitigationTime', mt, 'isEventSensitive', sensitive),
+    'display', pack_array(
+        pack('k', '状态', 'v', case(updateType == 'Resolved', '已恢复', updateType == 'PIR', '事后复盘（PIR）', updateType == 'Mitigated' and eventType in ('HealthAdvisory', 'SecurityAdvisory', 'Billing'), '已过截止日期', updateType == 'Mitigated', '已缓解', eventType in ('HealthAdvisory', 'SecurityAdvisory', 'Billing'), '生效中', '进行中')),
+        pack('k', '子类型', 'v', case(subType == 'Retirement', '退役通知', subType == 'PriceChanges', '价格变更', subType)),
+        pack('k', '影响服务', 'v', strcat_array(set_union(services, dynamic([])), '、')),
+        pack('k', '受影响资源', 'v', iff(isnull(irCount) or irCount == 0, '', strcat(tostring(irCount), ' 个：', strcat_array(irList, '、'), iff(irCount > 10, ' 等', '')))),
+        pack('k', '影响开始（北京时间）', 'v', iff(st > datetime(2000-01-01), format_datetime(st + 8h, 'yyyy-MM-dd HH:mm'), '')),
+        pack('k', '缓解 / 截止（北京时间）', 'v', iff(isnull(mt), '', format_datetime(mt + 8h, 'yyyy-MM-dd HH:mm')))),
+    'links', pack('portal', strcat('https://app.azure.com/h/', trackingId)))
+| project eventId, event

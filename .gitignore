@@ -1,0 +1,11 @@
+# local
+# internal working docs (customer data, test environment details) - never published
+docs/internal/
+*.local.json
+*.parameters.local.json
+.env
+__pycache__/
+*.pyc
+/out/
+/.vs/
+.DS_Store

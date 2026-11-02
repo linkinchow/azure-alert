@@ -1,0 +1,426 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "moduleName": {
+      "type": "String"
+    },
+    "query": {
+      "type": "String"
+    },
+    "fastLookback": {
+      "type": "String",
+      "defaultValue": "2h"
+    },
+    "slowLookback": {
+      "type": "String",
+      "defaultValue": "24h"
+    },
+    "slowEveryMinutes": {
+      "type": "Int",
+      "defaultValue": 60
+    },
+    "retentionHours": {
+      "type": "Int",
+      "defaultValue": 26
+    },
+    "argScope": {
+      "type": "Object",
+      "defaultValue": {}
+    },
+    "routerUrl": {
+      "type": "SecureString"
+    },
+    "miId": {
+      "type": "String"
+    },
+    "bootstrapSilent": {
+      "type": "Bool",
+      "defaultValue": true
+    },
+    "intervalMinutes": {
+      "type": "Int",
+      "defaultValue": 1
+    }
+  },
+  "triggers": {
+    "Recurrence": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 1
+      },
+      "runtimeConfiguration": {
+        "concurrency": {
+          "runs": 1,
+          "maximumWaitingRuns": 1
+        }
+      }
+    }
+  },
+  "actions": {
+    "Init_state": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "state",
+            "type": "object",
+            "value": {
+              "keys": [],
+              "bootstrapped": false
+            }
+          }
+        ]
+      },
+      "runAfter": {}
+    },
+    "Last_good_run": {
+      "type": "Http",
+      "inputs": {
+        "method": "GET",
+        "uri": "@{concat('https://management.azure.com', workflow()['id'], '/runs?api-version=2016-06-01&$top=1&$filter=', encodeUriComponent('status eq ''Succeeded'''))}",
+        "authentication": {
+          "type": "ManagedServiceIdentity",
+          "identity": "@parameters('miId')",
+          "audience": "https://management.azure.com/"
+        }
+      },
+      "runAfter": {
+        "Init_state": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Has_last_run": {
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "greater": [
+              "@length(coalesce(body('Last_good_run')?['value'], json('[]')))",
+              0
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "Last_state_action": {
+          "type": "Http",
+          "inputs": {
+            "method": "GET",
+            "uri": "@{concat('https://management.azure.com', workflow()['id'], '/runs/', first(body('Last_good_run')?['value'])?['name'], '/actions/State_out?api-version=2016-06-01')}",
+            "authentication": {
+              "type": "ManagedServiceIdentity",
+              "identity": "@parameters('miId')",
+              "audience": "https://management.azure.com/"
+            }
+          },
+          "runAfter": {}
+        },
+        "Last_state": {
+          "type": "Http",
+          "inputs": {
+            "method": "GET",
+            "uri": "@{body('Last_state_action')?['properties']?['outputsLink']?['uri']}"
+          },
+          "runAfter": {
+            "Last_state_action": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Set_state": {
+          "type": "SetVariable",
+          "inputs": {
+            "name": "state",
+            "value": "@json(string(body('Last_state')))"
+          },
+          "runAfter": {
+            "Last_state": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "else": {
+        "actions": {}
+      },
+      "runAfter": {
+        "Last_good_run": [
+          "Succeeded",
+          "Failed"
+        ]
+      }
+    },
+    "State": {
+      "type": "Compose",
+      "inputs": "@variables('state')",
+      "runAfter": {
+        "Has_last_run": [
+          "Succeeded",
+          "Failed",
+          "Skipped"
+        ]
+      }
+    },
+    "Known_keys": {
+      "type": "Select",
+      "inputs": {
+        "from": "@coalesce(outputs('State')?['keys'], json('[]'))",
+        "select": "@item()?['k']"
+      },
+      "runAfter": {
+        "State": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Lookback": {
+      "type": "Compose",
+      "inputs": "@if(not(equals(outputs('State')?['bootstrapped'], true)), parameters('slowLookback'), if(less(mod(add(mul(int(formatDateTime(utcNow(), 'HH')), 60), int(formatDateTime(utcNow(), 'mm'))), parameters('slowEveryMinutes')), parameters('intervalMinutes')), parameters('slowLookback'), parameters('fastLookback')))",
+      "runAfter": {
+        "Known_keys": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Base_body": {
+      "type": "Compose",
+      "inputs": "@addProperty(union(json('{\"options\":{\"$top\":1000,\"resultFormat\":\"objectArray\"}}'), parameters('argScope')), 'query', replace(parameters('query'), '__LOOKBACK__', outputs('Lookback')))",
+      "runAfter": {
+        "Lookback": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Init_rows": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "rows",
+            "type": "array",
+            "value": []
+          }
+        ]
+      },
+      "runAfter": {
+        "Base_body": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Init_skip": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "skip",
+            "type": "string",
+            "value": ""
+          }
+        ]
+      },
+      "runAfter": {
+        "Init_rows": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Until_all_pages": {
+      "type": "Until",
+      "expression": "@equals(variables('skip'), '')",
+      "limit": {
+        "count": 20,
+        "timeout": "PT10M"
+      },
+      "actions": {
+        "Query_ARG": {
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "https://management.azure.com/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "@if(equals(variables('skip'), ''), outputs('Base_body'), setProperty(outputs('Base_body'), 'options', addProperty(outputs('Base_body')?['options'], '$skipToken', variables('skip'))))",
+            "authentication": {
+              "type": "ManagedServiceIdentity",
+              "identity": "@parameters('miId')",
+              "audience": "https://management.azure.com/"
+            }
+          },
+          "runAfter": {}
+        },
+        "Merged_rows": {
+          "type": "Compose",
+          "inputs": "@union(variables('rows'), coalesce(body('Query_ARG')?['data'], json('[]')))",
+          "runAfter": {
+            "Query_ARG": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Set_rows": {
+          "type": "SetVariable",
+          "inputs": {
+            "name": "rows",
+            "value": "@outputs('Merged_rows')"
+          },
+          "runAfter": {
+            "Merged_rows": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Set_skip": {
+          "type": "SetVariable",
+          "inputs": {
+            "name": "skip",
+            "value": "@{coalesce(body('Query_ARG')?['$skipToken'], '')}"
+          },
+          "runAfter": {
+            "Set_rows": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runAfter": {
+        "Init_skip": [
+          "Succeeded"
+        ]
+      }
+    },
+    "New_rows": {
+      "type": "Query",
+      "inputs": {
+        "from": "@variables('rows')",
+        "where": "@not(contains(body('Known_keys'), item()?['eventId']))"
+      },
+      "runAfter": {
+        "Until_all_pages": [
+          "Succeeded"
+        ]
+      }
+    },
+    "New_events": {
+      "type": "Select",
+      "inputs": {
+        "from": "@body('New_rows')",
+        "select": "@setProperty(item()?['event'], 'time', addProperty(coalesce(item()?['event']?['time'], json('{}')), 'detectedTime', utcNow()))"
+      },
+      "runAfter": {
+        "New_rows": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Should_send": {
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "greater": [
+              "@length(body('New_events'))",
+              0
+            ]
+          },
+          {
+            "or": [
+              {
+                "equals": [
+                  "@outputs('State')?['bootstrapped']",
+                  true
+                ]
+              },
+              {
+                "equals": [
+                  "@parameters('bootstrapSilent')",
+                  false
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "Send_to_router": {
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "@parameters('routerUrl')",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "events": "@body('New_events')"
+            }
+          },
+          "runtimeConfiguration": {
+            "secureData": {
+              "properties": [
+                "inputs"
+              ]
+            }
+          },
+          "runAfter": {}
+        }
+      },
+      "else": {
+        "actions": {}
+      },
+      "runAfter": {
+        "New_events": [
+          "Succeeded"
+        ]
+      }
+    },
+    "New_entries": {
+      "type": "Select",
+      "inputs": {
+        "from": "@body('New_rows')",
+        "select": {
+          "k": "@item()?['eventId']",
+          "t": "@utcNow()"
+        }
+      },
+      "runAfter": {
+        "Should_send": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Kept_entries": {
+      "type": "Query",
+      "inputs": {
+        "from": "@coalesce(outputs('State')?['keys'], json('[]'))",
+        "where": "@greater(ticks(item()?['t']), ticks(addHours(utcNow(), mul(-1, parameters('retentionHours')))))"
+      },
+      "runAfter": {
+        "New_entries": [
+          "Succeeded"
+        ]
+      }
+    },
+    "State_out": {
+      "type": "Compose",
+      "inputs": {
+        "module": "@parameters('moduleName')",
+        "bootstrapped": true,
+        "updated": "@utcNow()",
+        "lookback": "@outputs('Lookback')",
+        "rowsInWindow": "@length(variables('rows'))",
+        "newEvents": "@length(body('New_rows'))",
+        "keys": "@union(body('Kept_entries'), body('New_entries'))"
+      },
+      "runAfter": {
+        "Kept_entries": [
+          "Succeeded"
+        ]
+      }
+    }
+  },
+  "outputs": {}
+}

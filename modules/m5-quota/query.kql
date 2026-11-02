@@ -1,0 +1,29 @@
+quotaresources
+| where type =~ 'microsoft.compute/locations/usages'
+| mv-expand q = properties.value limit 400
+| extend cur = todouble(q.currentValue), lim = todouble(q['limit']), qname = tostring(q.name.value), qdisp = tostring(q.name.localizedValue)
+| where lim > 0
+| extend pct = round(100.0 * cur / lim, 1)
+| extend band = case(__BAND_CASE__, 0)
+| where band > 0
+| join kind=leftouter (resourcecontainers | where type =~ 'microsoft.resources/subscriptions' | project subscriptionId, subName = name) on subscriptionId
+| extend eventId = strcat('quota:', subscriptionId, ':', location, ':', qname, ':', tostring(band))
+| extend event = pack(
+    'schemaVersion', '1.0',
+    'eventId', eventId,
+    'source', pack('module', 'M5-Quota', 'channel', 'ARG', 'rawId', id),
+    'category', 'Quota.Compute',
+    'severity', iff(band >= __CRITICAL_BAND__, 'Critical', 'Warning'),
+    'status', 'New',
+    'initiator', 'Customer',
+    'title', strcat(qdisp, '（', location, '）使用率 ', tostring(pct), '%'),
+    'summary', strcat('已使用 ', tostring(cur), ' / ', tostring(lim), '，达到 ', tostring(band), '% 档位。持续高于该档位时约每天提醒一次，升到更高档位时立即提醒。'),
+    'time', pack('eventTime', now()),
+    'resource', pack('id', strcat('/subscriptions/', subscriptionId), 'type', 'microsoft.compute/locations/usages', 'name', qdisp,
+        'subscriptionId', subscriptionId, 'subscriptionName', subName, 'region', location),
+    'details', pack('quotaName', qname, 'currentValue', cur, 'limit', lim, 'percent', pct, 'band', band),
+    'display', pack_array(
+        pack('k', '已用 / 上限', 'v', strcat(tostring(cur), ' / ', tostring(lim))),
+        pack('k', '配额名称', 'v', qname)),
+    'links', pack('portal', 'https://portal.azure.com/#view/Microsoft_Azure_Capacity/QuotaMenuBlade/~/myQuotas'))
+| project eventId, event
