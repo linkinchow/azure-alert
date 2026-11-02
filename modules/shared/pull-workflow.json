@@ -428,6 +428,40 @@
           "Succeeded"
         ]
       }
+    },
+    "Query_failed": {
+      "type": "If",
+      "expression": "@and(empty(coalesce(body('Last_good_run')?['value'], json('[]'))), equals(outputs('Query_ARG')?['statusCode'], 403))",
+      "actions": {
+        "Reader_not_effective_yet": {
+          "type": "Terminate",
+          "inputs": {
+            "runStatus": "Cancelled"
+          },
+          "runAfter": {}
+        }
+      },
+      "else": {
+        "actions": {
+          "Query_failed_terminate": {
+            "type": "Terminate",
+            "inputs": {
+              "runStatus": "Failed",
+              "runError": {
+                "code": "ArgQueryFailed",
+                "message": "@{concat('Resource Graph query failed: HTTP ', string(outputs('Query_ARG')?['statusCode']), ' ', string(body('Query_ARG')?['error']?['message']))}"
+              }
+            },
+            "runAfter": {}
+          }
+        }
+      },
+      "runAfter": {
+        "Until_all_pages": [
+          "Failed",
+          "TimedOut"
+        ]
+      }
     }
   },
   "outputs": {}

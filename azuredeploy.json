@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "13033895405192290759"
+      "templateHash": "6440103678171875570"
     }
   },
   "parameters": {
@@ -1807,7 +1807,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "15645993576447307984"
+              "templateHash": "4953693080999818876"
             }
           },
           "parameters": {
@@ -1935,7 +1935,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.44.1.10279",
-                      "templateHash": "1111358962705038378"
+                      "templateHash": "4939433192073609513"
                     }
                   },
                   "parameters": {
@@ -2452,6 +2452,40 @@
                               "Succeeded"
                             ]
                           }
+                        },
+                        "Query_failed": {
+                          "type": "If",
+                          "expression": "@and(empty(coalesce(body('Last_good_run')?['value'], json('[]'))), equals(outputs('Query_ARG')?['statusCode'], 403))",
+                          "actions": {
+                            "Reader_not_effective_yet": {
+                              "type": "Terminate",
+                              "inputs": {
+                                "runStatus": "Cancelled"
+                              },
+                              "runAfter": {}
+                            }
+                          },
+                          "else": {
+                            "actions": {
+                              "Query_failed_terminate": {
+                                "type": "Terminate",
+                                "inputs": {
+                                  "runStatus": "Failed",
+                                  "runError": {
+                                    "code": "ArgQueryFailed",
+                                    "message": "@{concat('Resource Graph query failed: HTTP ', string(outputs('Query_ARG')?['statusCode']), ' ', string(body('Query_ARG')?['error']?['message']))}"
+                                  }
+                                },
+                                "runAfter": {}
+                              }
+                            }
+                          },
+                          "runAfter": {
+                            "Until_all_pages": [
+                              "Failed",
+                              "TimedOut"
+                            ]
+                          }
                         }
                       },
                       "outputs": {}
@@ -2698,7 +2732,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "15792750409526110694"
+              "templateHash": "1832310660999271435"
             }
           },
           "functions": [
@@ -3011,7 +3045,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.44.1.10279",
-                      "templateHash": "1111358962705038378"
+                      "templateHash": "4939433192073609513"
                     }
                   },
                   "parameters": {
@@ -3526,6 +3560,40 @@
                           "runAfter": {
                             "Kept_entries": [
                               "Succeeded"
+                            ]
+                          }
+                        },
+                        "Query_failed": {
+                          "type": "If",
+                          "expression": "@and(empty(coalesce(body('Last_good_run')?['value'], json('[]'))), equals(outputs('Query_ARG')?['statusCode'], 403))",
+                          "actions": {
+                            "Reader_not_effective_yet": {
+                              "type": "Terminate",
+                              "inputs": {
+                                "runStatus": "Cancelled"
+                              },
+                              "runAfter": {}
+                            }
+                          },
+                          "else": {
+                            "actions": {
+                              "Query_failed_terminate": {
+                                "type": "Terminate",
+                                "inputs": {
+                                  "runStatus": "Failed",
+                                  "runError": {
+                                    "code": "ArgQueryFailed",
+                                    "message": "@{concat('Resource Graph query failed: HTTP ', string(outputs('Query_ARG')?['statusCode']), ' ', string(body('Query_ARG')?['error']?['message']))}"
+                                  }
+                                },
+                                "runAfter": {}
+                              }
+                            }
+                          },
+                          "runAfter": {
+                            "Until_all_pages": [
+                              "Failed",
+                              "TimedOut"
                             ]
                           }
                         }
@@ -3770,7 +3838,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "3242129571526355162"
+              "templateHash": "4263761111784737859"
             }
           },
           "parameters": {
@@ -3897,7 +3965,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.44.1.10279",
-                      "templateHash": "1111358962705038378"
+                      "templateHash": "4939433192073609513"
                     }
                   },
                   "parameters": {
@@ -4412,6 +4480,40 @@
                           "runAfter": {
                             "Kept_entries": [
                               "Succeeded"
+                            ]
+                          }
+                        },
+                        "Query_failed": {
+                          "type": "If",
+                          "expression": "@and(empty(coalesce(body('Last_good_run')?['value'], json('[]'))), equals(outputs('Query_ARG')?['statusCode'], 403))",
+                          "actions": {
+                            "Reader_not_effective_yet": {
+                              "type": "Terminate",
+                              "inputs": {
+                                "runStatus": "Cancelled"
+                              },
+                              "runAfter": {}
+                            }
+                          },
+                          "else": {
+                            "actions": {
+                              "Query_failed_terminate": {
+                                "type": "Terminate",
+                                "inputs": {
+                                  "runStatus": "Failed",
+                                  "runError": {
+                                    "code": "ArgQueryFailed",
+                                    "message": "@{concat('Resource Graph query failed: HTTP ', string(outputs('Query_ARG')?['statusCode']), ' ', string(body('Query_ARG')?['error']?['message']))}"
+                                  }
+                                },
+                                "runAfter": {}
+                              }
+                            }
+                          },
+                          "runAfter": {
+                            "Until_all_pages": [
+                              "Failed",
+                              "TimedOut"
                             ]
                           }
                         }
@@ -4653,7 +4755,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "9742756578980542730"
+              "templateHash": "17782723358293514071"
             }
           },
           "parameters": {
@@ -4780,7 +4882,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.44.1.10279",
-                      "templateHash": "1111358962705038378"
+                      "templateHash": "4939433192073609513"
                     }
                   },
                   "parameters": {
@@ -5295,6 +5397,40 @@
                           "runAfter": {
                             "Kept_entries": [
                               "Succeeded"
+                            ]
+                          }
+                        },
+                        "Query_failed": {
+                          "type": "If",
+                          "expression": "@and(empty(coalesce(body('Last_good_run')?['value'], json('[]'))), equals(outputs('Query_ARG')?['statusCode'], 403))",
+                          "actions": {
+                            "Reader_not_effective_yet": {
+                              "type": "Terminate",
+                              "inputs": {
+                                "runStatus": "Cancelled"
+                              },
+                              "runAfter": {}
+                            }
+                          },
+                          "else": {
+                            "actions": {
+                              "Query_failed_terminate": {
+                                "type": "Terminate",
+                                "inputs": {
+                                  "runStatus": "Failed",
+                                  "runError": {
+                                    "code": "ArgQueryFailed",
+                                    "message": "@{concat('Resource Graph query failed: HTTP ', string(outputs('Query_ARG')?['statusCode']), ' ', string(body('Query_ARG')?['error']?['message']))}"
+                                  }
+                                },
+                                "runAfter": {}
+                              }
+                            }
+                          },
+                          "runAfter": {
+                            "Until_all_pages": [
+                              "Failed",
+                              "TimedOut"
                             ]
                           }
                         }
@@ -5536,7 +5672,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "18104109846327599054"
+              "templateHash": "16158032790623269108"
             }
           },
           "parameters": {
@@ -5661,7 +5797,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.44.1.10279",
-                      "templateHash": "1111358962705038378"
+                      "templateHash": "4939433192073609513"
                     }
                   },
                   "parameters": {
@@ -6176,6 +6312,40 @@
                           "runAfter": {
                             "Kept_entries": [
                               "Succeeded"
+                            ]
+                          }
+                        },
+                        "Query_failed": {
+                          "type": "If",
+                          "expression": "@and(empty(coalesce(body('Last_good_run')?['value'], json('[]'))), equals(outputs('Query_ARG')?['statusCode'], 403))",
+                          "actions": {
+                            "Reader_not_effective_yet": {
+                              "type": "Terminate",
+                              "inputs": {
+                                "runStatus": "Cancelled"
+                              },
+                              "runAfter": {}
+                            }
+                          },
+                          "else": {
+                            "actions": {
+                              "Query_failed_terminate": {
+                                "type": "Terminate",
+                                "inputs": {
+                                  "runStatus": "Failed",
+                                  "runError": {
+                                    "code": "ArgQueryFailed",
+                                    "message": "@{concat('Resource Graph query failed: HTTP ', string(outputs('Query_ARG')?['statusCode']), ' ', string(body('Query_ARG')?['error']?['message']))}"
+                                  }
+                                },
+                                "runAfter": {}
+                              }
+                            }
+                          },
+                          "runAfter": {
+                            "Until_all_pages": [
+                              "Failed",
+                              "TimedOut"
                             ]
                           }
                         }
