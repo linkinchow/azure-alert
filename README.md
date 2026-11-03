@@ -70,7 +70,7 @@ test/                         测试参数（webhook 放在 *.local.json，不�
    | `readerScope` | `subscription`（默认，对 `readerSubscriptionIds` 中的订阅授予 Reader）或 `none`。选 `none` 时，部署后执行 `scripts/grant-reader-mg.sh <mg> <identityPrincipalId>` 在管理组上授权，新订阅会自动纳入 |
    | `pushSubscriptionIds` | 需要部署 M3 / M4 / M7 告警规则的订阅列表 |
    | `metricRegions` | M4 多资源 metric 规则的区域列表 |
-   | `bootstrapSilent` | 默认 `true`：首次运行只记录指纹不发送，避免把历史事件一次性推进群 |
+   | `bootstrapSilent` | 默认 `true`：全新部署后，每个 Pull 模块从第一次成功运行起 30 分钟内只记录指纹、不发送（每次回看 24 小时），避免把历史事件一次性推进群。重新部署、更新模板不会再次静默 |
    | `feishuMaxAttempts` | 默认 `8`：飞书限流时每条消息最多发送几次（见下文"飞书限流"） |
 
 ### 一键部署（Deploy to Azure）
@@ -97,7 +97,10 @@ test/                         测试参数（webhook 放在 *.local.json，不�
   - `title`、`limit`、`kind` 是保留字。
   - `resources` 和 `computeresources` 不能出现在同一查询里，`healthresources` 和 `computeresources` 也不能。
   - 所以 Flash 的 VM 和 VMSS 分成两个查询；VMSS 事件拿不到订阅名。
-- **刚部署完的权限延迟**：部署时给托管身份授予的 Reader 要几分钟才生效。Pull 模块在**从未成功运行过**时如果查询 ARG 返回 403，这次运行标为"已取消"而不是"失败"，不触发自检告警，下一次运行自动重试。成功运行过之后再出现 403（例如权限被收回），仍按失败告警。
+- **刚部署完的权限延迟**：部署时给托管身份授予的 Reader 要几分钟才生效，生效前 ARG 可能返回 403，也可能返回**空结果**。
+  - 部署后 60 分钟内（`permissionGraceMinutes`），查询 ARG 返回 403 时这次运行标为"已取消"，不触发自检告警，下一次运行自动重试。
+  - 超过 60 分钟后返回 403，或者读不到自己的运行历史（去重状态），按失败处理并告警。这样授权被收回时能及时发现，不会悄悄停止工作。
+  - 返回空结果的情况由 `bootstrapSilent` 的 30 分钟静默期覆盖：静默期内每次都回看 24 小时、只记录指纹，权限完全生效后补齐的历史事件不会被当成新事件推送。
 - **飞书限流**：自定义机器人每个机器人每分钟 100 条、每秒 5 条，超出时返回错误码 11232。
   - Router 收到 11232 或 HTTP 429 时，等待后重新发送同一条消息。等待时间随次数增加：15～30 秒、30～45 秒……；默认最多 8 次，约 10 分钟。
   - 其他错误（例如 9499 消息格式错误）不重试，直接记为失败。

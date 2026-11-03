@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "6440103678171875570"
+      "templateHash": "7180644098759652138"
     }
   },
   "parameters": {
@@ -102,6 +102,13 @@
       "defaultValue": true,
       "metadata": {
         "description": "First run of each pull module only records fingerprints without sending."
+      }
+    },
+    "deploymentTime": {
+      "type": "string",
+      "defaultValue": "[utcNow('yyyy-MM-ddTHH:mm:ssZ')]",
+      "metadata": {
+        "description": "Deployment time (UTC). Pull modules treat HTTP 403 as \"Reader role not effective yet\" only within permissionGraceMinutes after this time; later a 403 fails the run (self-monitoring alert). Leave the default."
       }
     },
     "fastLookback": {
@@ -1790,6 +1797,9 @@
           "bootstrapSilent": {
             "value": "[parameters('bootstrapSilent')]"
           },
+          "deployedAt": {
+            "value": "[parameters('deploymentTime')]"
+          },
           "fastLookback": {
             "value": "[parameters('fastLookback')]"
           },
@@ -1807,7 +1817,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "4953693080999818876"
+              "templateHash": "2293638574473255101"
             }
           },
           "parameters": {
@@ -1843,6 +1853,10 @@
             "bootstrapSilent": {
               "type": "bool",
               "defaultValue": true
+            },
+            "deployedAt": {
+              "type": "string",
+              "defaultValue": "[utcNow('yyyy-MM-ddTHH:mm:ssZ')]"
             },
             "fastLookback": {
               "type": "string",
@@ -1918,6 +1932,9 @@
                   "bootstrapSilent": {
                     "value": "[parameters('bootstrapSilent')]"
                   },
+                  "deployedAt": {
+                    "value": "[parameters('deployedAt')]"
+                  },
                   "fastLookback": {
                     "value": "[parameters('fastLookback')]"
                   },
@@ -1935,7 +1952,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.44.1.10279",
-                      "templateHash": "4939433192073609513"
+                      "templateHash": "11918359679246086497"
                     }
                   },
                   "parameters": {
@@ -2009,6 +2026,27 @@
                         "description": "ARG request scope merged into the request body, e.g. {} (all subscriptions the identity can read), { \"managementGroups\": [\"mg-id\"] } or { \"subscriptions\": [\"...\"] }."
                       }
                     },
+                    "deployedAt": {
+                      "type": "string",
+                      "defaultValue": "[utcNow('yyyy-MM-ddTHH:mm:ssZ')]",
+                      "metadata": {
+                        "description": "Deployment time (UTC); see permissionGraceMinutes."
+                      }
+                    },
+                    "bootstrapMinutes": {
+                      "type": "int",
+                      "defaultValue": 30,
+                      "metadata": {
+                        "description": "With bootstrapSilent, every run in the first N minutes after the first successful run only records fingerprints (24h look-back) and sends nothing. Covers Resource Graph returning empty results while the Reader role is still propagating."
+                      }
+                    },
+                    "permissionGraceMinutes": {
+                      "type": "int",
+                      "defaultValue": 60,
+                      "metadata": {
+                        "description": "Minutes after deployment during which HTTP 403 (Reader role not effective yet) cancels the run instead of failing it."
+                      }
+                    },
                     "bootstrapSilent": {
                       "type": "bool",
                       "defaultValue": true,
@@ -2073,6 +2111,18 @@
                         "armAudience": {
                           "type": "String",
                           "defaultValue": "https://management.azure.com/"
+                        },
+                        "deployedAt": {
+                          "type": "String",
+                          "defaultValue": "2000-01-01T00:00:00Z"
+                        },
+                        "permissionGraceMinutes": {
+                          "type": "Int",
+                          "defaultValue": 60
+                        },
+                        "bootstrapMinutes": {
+                          "type": "Int",
+                          "defaultValue": 30
                         }
                       },
                       "triggers": {
@@ -2203,14 +2253,14 @@
                             "select": "@item()?['k']"
                           },
                           "runAfter": {
-                            "State": [
+                            "Silent": [
                               "Succeeded"
                             ]
                           }
                         },
                         "Lookback": {
                           "type": "Compose",
-                          "inputs": "@if(not(equals(outputs('State')?['bootstrapped'], true)), parameters('slowLookback'), if(less(mod(add(mul(int(formatDateTime(utcNow(), 'HH')), 60), int(formatDateTime(utcNow(), 'mm'))), parameters('slowEveryMinutes')), parameters('intervalMinutes')), parameters('slowLookback'), parameters('fastLookback')))",
+                          "inputs": "@if(or(not(equals(outputs('State')?['bootstrapped'], true)), outputs('Silent')), parameters('slowLookback'), if(less(mod(add(mul(int(formatDateTime(utcNow(), 'HH')), 60), int(formatDateTime(utcNow(), 'mm'))), parameters('slowEveryMinutes')), parameters('intervalMinutes')), parameters('slowLookback'), parameters('fastLookback')))",
                           "runAfter": {
                             "Known_keys": [
                               "Succeeded"
@@ -2360,19 +2410,9 @@
                                 ]
                               },
                               {
-                                "or": [
-                                  {
-                                    "equals": [
-                                      "@outputs('State')?['bootstrapped']",
-                                      true
-                                    ]
-                                  },
-                                  {
-                                    "equals": [
-                                      "@parameters('bootstrapSilent')",
-                                      false
-                                    ]
-                                  }
+                                "equals": [
+                                  "@outputs('Silent')",
+                                  false
                                 ]
                               }
                             ]
@@ -2445,7 +2485,8 @@
                             "lookback": "@outputs('Lookback')",
                             "rowsInWindow": "@length(variables('rows'))",
                             "newEvents": "@length(body('New_rows'))",
-                            "keys": "@union(body('Kept_entries'), body('New_entries'))"
+                            "keys": "@union(body('Kept_entries'), body('New_entries'))",
+                            "silentUntil": "@outputs('Silent_until')"
                           },
                           "runAfter": {
                             "Kept_entries": [
@@ -2455,7 +2496,7 @@
                         },
                         "Query_failed": {
                           "type": "If",
-                          "expression": "@and(empty(coalesce(body('Last_good_run')?['value'], json('[]'))), equals(outputs('Query_ARG')?['statusCode'], 403))",
+                          "expression": "@and(equals(outputs('Query_ARG')?['statusCode'], 403), less(utcNow(), addMinutes(parameters('deployedAt'), parameters('permissionGraceMinutes'))))",
                           "actions": {
                             "Reader_not_effective_yet": {
                               "type": "Terminate",
@@ -2484,6 +2525,50 @@
                             "Until_all_pages": [
                               "Failed",
                               "TimedOut"
+                            ]
+                          }
+                        },
+                        "History_unreadable": {
+                          "type": "If",
+                          "expression": "@less(utcNow(), addMinutes(parameters('deployedAt'), parameters('permissionGraceMinutes')))",
+                          "actions": {},
+                          "else": {
+                            "actions": {
+                              "History_unreadable_terminate": {
+                                "type": "Terminate",
+                                "inputs": {
+                                  "runStatus": "Failed",
+                                  "runError": {
+                                    "code": "RunHistoryUnreadable",
+                                    "message": "@{concat('Cannot read this workflow''s run history (dedup state): HTTP ', string(outputs('Last_good_run')?['statusCode']), '. Check the identity''s Reader role on the resource group.')}"
+                                  }
+                                },
+                                "runAfter": {}
+                              }
+                            }
+                          },
+                          "runAfter": {
+                            "Last_good_run": [
+                              "Failed",
+                              "TimedOut"
+                            ]
+                          }
+                        },
+                        "Silent_until": {
+                          "type": "Compose",
+                          "inputs": "@if(equals(outputs('State')?['bootstrapped'], true), coalesce(outputs('State')?['silentUntil'], '2000-01-01T00:00:00Z'), addMinutes(utcNow(), parameters('bootstrapMinutes')))",
+                          "runAfter": {
+                            "State": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Silent": {
+                          "type": "Compose",
+                          "inputs": "@and(parameters('bootstrapSilent'), less(utcNow(), outputs('Silent_until')))",
+                          "runAfter": {
+                            "Silent_until": [
+                              "Succeeded"
                             ]
                           }
                         }
@@ -2553,6 +2638,15 @@
                           },
                           "armAudience": {
                             "value": "[variables('armAudience')]"
+                          },
+                          "deployedAt": {
+                            "value": "[parameters('deployedAt')]"
+                          },
+                          "permissionGraceMinutes": {
+                            "value": "[parameters('permissionGraceMinutes')]"
+                          },
+                          "bootstrapMinutes": {
+                            "value": "[parameters('bootstrapMinutes')]"
                           }
                         }
                       }
@@ -2714,6 +2808,9 @@
           "bootstrapSilent": {
             "value": "[parameters('bootstrapSilent')]"
           },
+          "deployedAt": {
+            "value": "[parameters('deploymentTime')]"
+          },
           "fastLookback": {
             "value": "[parameters('fastLookback')]"
           },
@@ -2732,7 +2829,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "1832310660999271435"
+              "templateHash": "12180956407806043832"
             }
           },
           "functions": [
@@ -2799,6 +2896,10 @@
             "bootstrapSilent": {
               "type": "bool",
               "defaultValue": true
+            },
+            "deployedAt": {
+              "type": "string",
+              "defaultValue": "[utcNow('yyyy-MM-ddTHH:mm:ssZ')]"
             },
             "fastLookback": {
               "type": "string",
@@ -3028,6 +3129,9 @@
                   "bootstrapSilent": {
                     "value": "[parameters('bootstrapSilent')]"
                   },
+                  "deployedAt": {
+                    "value": "[parameters('deployedAt')]"
+                  },
                   "fastLookback": {
                     "value": "[parameters('fastLookback')]"
                   },
@@ -3045,7 +3149,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.44.1.10279",
-                      "templateHash": "4939433192073609513"
+                      "templateHash": "11918359679246086497"
                     }
                   },
                   "parameters": {
@@ -3119,6 +3223,27 @@
                         "description": "ARG request scope merged into the request body, e.g. {} (all subscriptions the identity can read), { \"managementGroups\": [\"mg-id\"] } or { \"subscriptions\": [\"...\"] }."
                       }
                     },
+                    "deployedAt": {
+                      "type": "string",
+                      "defaultValue": "[utcNow('yyyy-MM-ddTHH:mm:ssZ')]",
+                      "metadata": {
+                        "description": "Deployment time (UTC); see permissionGraceMinutes."
+                      }
+                    },
+                    "bootstrapMinutes": {
+                      "type": "int",
+                      "defaultValue": 30,
+                      "metadata": {
+                        "description": "With bootstrapSilent, every run in the first N minutes after the first successful run only records fingerprints (24h look-back) and sends nothing. Covers Resource Graph returning empty results while the Reader role is still propagating."
+                      }
+                    },
+                    "permissionGraceMinutes": {
+                      "type": "int",
+                      "defaultValue": 60,
+                      "metadata": {
+                        "description": "Minutes after deployment during which HTTP 403 (Reader role not effective yet) cancels the run instead of failing it."
+                      }
+                    },
                     "bootstrapSilent": {
                       "type": "bool",
                       "defaultValue": true,
@@ -3183,6 +3308,18 @@
                         "armAudience": {
                           "type": "String",
                           "defaultValue": "https://management.azure.com/"
+                        },
+                        "deployedAt": {
+                          "type": "String",
+                          "defaultValue": "2000-01-01T00:00:00Z"
+                        },
+                        "permissionGraceMinutes": {
+                          "type": "Int",
+                          "defaultValue": 60
+                        },
+                        "bootstrapMinutes": {
+                          "type": "Int",
+                          "defaultValue": 30
                         }
                       },
                       "triggers": {
@@ -3313,14 +3450,14 @@
                             "select": "@item()?['k']"
                           },
                           "runAfter": {
-                            "State": [
+                            "Silent": [
                               "Succeeded"
                             ]
                           }
                         },
                         "Lookback": {
                           "type": "Compose",
-                          "inputs": "@if(not(equals(outputs('State')?['bootstrapped'], true)), parameters('slowLookback'), if(less(mod(add(mul(int(formatDateTime(utcNow(), 'HH')), 60), int(formatDateTime(utcNow(), 'mm'))), parameters('slowEveryMinutes')), parameters('intervalMinutes')), parameters('slowLookback'), parameters('fastLookback')))",
+                          "inputs": "@if(or(not(equals(outputs('State')?['bootstrapped'], true)), outputs('Silent')), parameters('slowLookback'), if(less(mod(add(mul(int(formatDateTime(utcNow(), 'HH')), 60), int(formatDateTime(utcNow(), 'mm'))), parameters('slowEveryMinutes')), parameters('intervalMinutes')), parameters('slowLookback'), parameters('fastLookback')))",
                           "runAfter": {
                             "Known_keys": [
                               "Succeeded"
@@ -3470,19 +3607,9 @@
                                 ]
                               },
                               {
-                                "or": [
-                                  {
-                                    "equals": [
-                                      "@outputs('State')?['bootstrapped']",
-                                      true
-                                    ]
-                                  },
-                                  {
-                                    "equals": [
-                                      "@parameters('bootstrapSilent')",
-                                      false
-                                    ]
-                                  }
+                                "equals": [
+                                  "@outputs('Silent')",
+                                  false
                                 ]
                               }
                             ]
@@ -3555,7 +3682,8 @@
                             "lookback": "@outputs('Lookback')",
                             "rowsInWindow": "@length(variables('rows'))",
                             "newEvents": "@length(body('New_rows'))",
-                            "keys": "@union(body('Kept_entries'), body('New_entries'))"
+                            "keys": "@union(body('Kept_entries'), body('New_entries'))",
+                            "silentUntil": "@outputs('Silent_until')"
                           },
                           "runAfter": {
                             "Kept_entries": [
@@ -3565,7 +3693,7 @@
                         },
                         "Query_failed": {
                           "type": "If",
-                          "expression": "@and(empty(coalesce(body('Last_good_run')?['value'], json('[]'))), equals(outputs('Query_ARG')?['statusCode'], 403))",
+                          "expression": "@and(equals(outputs('Query_ARG')?['statusCode'], 403), less(utcNow(), addMinutes(parameters('deployedAt'), parameters('permissionGraceMinutes'))))",
                           "actions": {
                             "Reader_not_effective_yet": {
                               "type": "Terminate",
@@ -3594,6 +3722,50 @@
                             "Until_all_pages": [
                               "Failed",
                               "TimedOut"
+                            ]
+                          }
+                        },
+                        "History_unreadable": {
+                          "type": "If",
+                          "expression": "@less(utcNow(), addMinutes(parameters('deployedAt'), parameters('permissionGraceMinutes')))",
+                          "actions": {},
+                          "else": {
+                            "actions": {
+                              "History_unreadable_terminate": {
+                                "type": "Terminate",
+                                "inputs": {
+                                  "runStatus": "Failed",
+                                  "runError": {
+                                    "code": "RunHistoryUnreadable",
+                                    "message": "@{concat('Cannot read this workflow''s run history (dedup state): HTTP ', string(outputs('Last_good_run')?['statusCode']), '. Check the identity''s Reader role on the resource group.')}"
+                                  }
+                                },
+                                "runAfter": {}
+                              }
+                            }
+                          },
+                          "runAfter": {
+                            "Last_good_run": [
+                              "Failed",
+                              "TimedOut"
+                            ]
+                          }
+                        },
+                        "Silent_until": {
+                          "type": "Compose",
+                          "inputs": "@if(equals(outputs('State')?['bootstrapped'], true), coalesce(outputs('State')?['silentUntil'], '2000-01-01T00:00:00Z'), addMinutes(utcNow(), parameters('bootstrapMinutes')))",
+                          "runAfter": {
+                            "State": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Silent": {
+                          "type": "Compose",
+                          "inputs": "@and(parameters('bootstrapSilent'), less(utcNow(), outputs('Silent_until')))",
+                          "runAfter": {
+                            "Silent_until": [
+                              "Succeeded"
                             ]
                           }
                         }
@@ -3663,6 +3835,15 @@
                           },
                           "armAudience": {
                             "value": "[variables('armAudience')]"
+                          },
+                          "deployedAt": {
+                            "value": "[parameters('deployedAt')]"
+                          },
+                          "permissionGraceMinutes": {
+                            "value": "[parameters('permissionGraceMinutes')]"
+                          },
+                          "bootstrapMinutes": {
+                            "value": "[parameters('bootstrapMinutes')]"
                           }
                         }
                       }
@@ -3827,6 +4008,9 @@
           "bootstrapSilent": {
             "value": "[parameters('bootstrapSilent')]"
           },
+          "deployedAt": {
+            "value": "[parameters('deploymentTime')]"
+          },
           "enabled": {
             "value": "[parameters('pullEnabled')]"
           }
@@ -3838,7 +4022,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "4263761111784737859"
+              "templateHash": "11555636886636790305"
             }
           },
           "parameters": {
@@ -3874,6 +4058,10 @@
             "bootstrapSilent": {
               "type": "bool",
               "defaultValue": true
+            },
+            "deployedAt": {
+              "type": "string",
+              "defaultValue": "[utcNow('yyyy-MM-ddTHH:mm:ssZ')]"
             },
             "enabled": {
               "type": "bool",
@@ -3948,6 +4136,9 @@
                   "bootstrapSilent": {
                     "value": "[parameters('bootstrapSilent')]"
                   },
+                  "deployedAt": {
+                    "value": "[parameters('deployedAt')]"
+                  },
                   "intervalMinutes": {
                     "value": 15
                   },
@@ -3965,7 +4156,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.44.1.10279",
-                      "templateHash": "4939433192073609513"
+                      "templateHash": "11918359679246086497"
                     }
                   },
                   "parameters": {
@@ -4039,6 +4230,27 @@
                         "description": "ARG request scope merged into the request body, e.g. {} (all subscriptions the identity can read), { \"managementGroups\": [\"mg-id\"] } or { \"subscriptions\": [\"...\"] }."
                       }
                     },
+                    "deployedAt": {
+                      "type": "string",
+                      "defaultValue": "[utcNow('yyyy-MM-ddTHH:mm:ssZ')]",
+                      "metadata": {
+                        "description": "Deployment time (UTC); see permissionGraceMinutes."
+                      }
+                    },
+                    "bootstrapMinutes": {
+                      "type": "int",
+                      "defaultValue": 30,
+                      "metadata": {
+                        "description": "With bootstrapSilent, every run in the first N minutes after the first successful run only records fingerprints (24h look-back) and sends nothing. Covers Resource Graph returning empty results while the Reader role is still propagating."
+                      }
+                    },
+                    "permissionGraceMinutes": {
+                      "type": "int",
+                      "defaultValue": 60,
+                      "metadata": {
+                        "description": "Minutes after deployment during which HTTP 403 (Reader role not effective yet) cancels the run instead of failing it."
+                      }
+                    },
                     "bootstrapSilent": {
                       "type": "bool",
                       "defaultValue": true,
@@ -4103,6 +4315,18 @@
                         "armAudience": {
                           "type": "String",
                           "defaultValue": "https://management.azure.com/"
+                        },
+                        "deployedAt": {
+                          "type": "String",
+                          "defaultValue": "2000-01-01T00:00:00Z"
+                        },
+                        "permissionGraceMinutes": {
+                          "type": "Int",
+                          "defaultValue": 60
+                        },
+                        "bootstrapMinutes": {
+                          "type": "Int",
+                          "defaultValue": 30
                         }
                       },
                       "triggers": {
@@ -4233,14 +4457,14 @@
                             "select": "@item()?['k']"
                           },
                           "runAfter": {
-                            "State": [
+                            "Silent": [
                               "Succeeded"
                             ]
                           }
                         },
                         "Lookback": {
                           "type": "Compose",
-                          "inputs": "@if(not(equals(outputs('State')?['bootstrapped'], true)), parameters('slowLookback'), if(less(mod(add(mul(int(formatDateTime(utcNow(), 'HH')), 60), int(formatDateTime(utcNow(), 'mm'))), parameters('slowEveryMinutes')), parameters('intervalMinutes')), parameters('slowLookback'), parameters('fastLookback')))",
+                          "inputs": "@if(or(not(equals(outputs('State')?['bootstrapped'], true)), outputs('Silent')), parameters('slowLookback'), if(less(mod(add(mul(int(formatDateTime(utcNow(), 'HH')), 60), int(formatDateTime(utcNow(), 'mm'))), parameters('slowEveryMinutes')), parameters('intervalMinutes')), parameters('slowLookback'), parameters('fastLookback')))",
                           "runAfter": {
                             "Known_keys": [
                               "Succeeded"
@@ -4390,19 +4614,9 @@
                                 ]
                               },
                               {
-                                "or": [
-                                  {
-                                    "equals": [
-                                      "@outputs('State')?['bootstrapped']",
-                                      true
-                                    ]
-                                  },
-                                  {
-                                    "equals": [
-                                      "@parameters('bootstrapSilent')",
-                                      false
-                                    ]
-                                  }
+                                "equals": [
+                                  "@outputs('Silent')",
+                                  false
                                 ]
                               }
                             ]
@@ -4475,7 +4689,8 @@
                             "lookback": "@outputs('Lookback')",
                             "rowsInWindow": "@length(variables('rows'))",
                             "newEvents": "@length(body('New_rows'))",
-                            "keys": "@union(body('Kept_entries'), body('New_entries'))"
+                            "keys": "@union(body('Kept_entries'), body('New_entries'))",
+                            "silentUntil": "@outputs('Silent_until')"
                           },
                           "runAfter": {
                             "Kept_entries": [
@@ -4485,7 +4700,7 @@
                         },
                         "Query_failed": {
                           "type": "If",
-                          "expression": "@and(empty(coalesce(body('Last_good_run')?['value'], json('[]'))), equals(outputs('Query_ARG')?['statusCode'], 403))",
+                          "expression": "@and(equals(outputs('Query_ARG')?['statusCode'], 403), less(utcNow(), addMinutes(parameters('deployedAt'), parameters('permissionGraceMinutes'))))",
                           "actions": {
                             "Reader_not_effective_yet": {
                               "type": "Terminate",
@@ -4514,6 +4729,50 @@
                             "Until_all_pages": [
                               "Failed",
                               "TimedOut"
+                            ]
+                          }
+                        },
+                        "History_unreadable": {
+                          "type": "If",
+                          "expression": "@less(utcNow(), addMinutes(parameters('deployedAt'), parameters('permissionGraceMinutes')))",
+                          "actions": {},
+                          "else": {
+                            "actions": {
+                              "History_unreadable_terminate": {
+                                "type": "Terminate",
+                                "inputs": {
+                                  "runStatus": "Failed",
+                                  "runError": {
+                                    "code": "RunHistoryUnreadable",
+                                    "message": "@{concat('Cannot read this workflow''s run history (dedup state): HTTP ', string(outputs('Last_good_run')?['statusCode']), '. Check the identity''s Reader role on the resource group.')}"
+                                  }
+                                },
+                                "runAfter": {}
+                              }
+                            }
+                          },
+                          "runAfter": {
+                            "Last_good_run": [
+                              "Failed",
+                              "TimedOut"
+                            ]
+                          }
+                        },
+                        "Silent_until": {
+                          "type": "Compose",
+                          "inputs": "@if(equals(outputs('State')?['bootstrapped'], true), coalesce(outputs('State')?['silentUntil'], '2000-01-01T00:00:00Z'), addMinutes(utcNow(), parameters('bootstrapMinutes')))",
+                          "runAfter": {
+                            "State": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Silent": {
+                          "type": "Compose",
+                          "inputs": "@and(parameters('bootstrapSilent'), less(utcNow(), outputs('Silent_until')))",
+                          "runAfter": {
+                            "Silent_until": [
+                              "Succeeded"
                             ]
                           }
                         }
@@ -4583,6 +4842,15 @@
                           },
                           "armAudience": {
                             "value": "[variables('armAudience')]"
+                          },
+                          "deployedAt": {
+                            "value": "[parameters('deployedAt')]"
+                          },
+                          "permissionGraceMinutes": {
+                            "value": "[parameters('permissionGraceMinutes')]"
+                          },
+                          "bootstrapMinutes": {
+                            "value": "[parameters('bootstrapMinutes')]"
                           }
                         }
                       }
@@ -4744,6 +5012,9 @@
           "bootstrapSilent": {
             "value": "[parameters('bootstrapSilent')]"
           },
+          "deployedAt": {
+            "value": "[parameters('deploymentTime')]"
+          },
           "enabled": {
             "value": "[parameters('pullEnabled')]"
           }
@@ -4755,7 +5026,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "17782723358293514071"
+              "templateHash": "17762009187593125578"
             }
           },
           "parameters": {
@@ -4791,6 +5062,10 @@
             "bootstrapSilent": {
               "type": "bool",
               "defaultValue": true
+            },
+            "deployedAt": {
+              "type": "string",
+              "defaultValue": "[utcNow('yyyy-MM-ddTHH:mm:ssZ')]"
             },
             "enabled": {
               "type": "bool",
@@ -4865,6 +5140,9 @@
                   "bootstrapSilent": {
                     "value": "[parameters('bootstrapSilent')]"
                   },
+                  "deployedAt": {
+                    "value": "[parameters('deployedAt')]"
+                  },
                   "intervalMinutes": {
                     "value": 1
                   },
@@ -4882,7 +5160,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.44.1.10279",
-                      "templateHash": "4939433192073609513"
+                      "templateHash": "11918359679246086497"
                     }
                   },
                   "parameters": {
@@ -4956,6 +5234,27 @@
                         "description": "ARG request scope merged into the request body, e.g. {} (all subscriptions the identity can read), { \"managementGroups\": [\"mg-id\"] } or { \"subscriptions\": [\"...\"] }."
                       }
                     },
+                    "deployedAt": {
+                      "type": "string",
+                      "defaultValue": "[utcNow('yyyy-MM-ddTHH:mm:ssZ')]",
+                      "metadata": {
+                        "description": "Deployment time (UTC); see permissionGraceMinutes."
+                      }
+                    },
+                    "bootstrapMinutes": {
+                      "type": "int",
+                      "defaultValue": 30,
+                      "metadata": {
+                        "description": "With bootstrapSilent, every run in the first N minutes after the first successful run only records fingerprints (24h look-back) and sends nothing. Covers Resource Graph returning empty results while the Reader role is still propagating."
+                      }
+                    },
+                    "permissionGraceMinutes": {
+                      "type": "int",
+                      "defaultValue": 60,
+                      "metadata": {
+                        "description": "Minutes after deployment during which HTTP 403 (Reader role not effective yet) cancels the run instead of failing it."
+                      }
+                    },
                     "bootstrapSilent": {
                       "type": "bool",
                       "defaultValue": true,
@@ -5020,6 +5319,18 @@
                         "armAudience": {
                           "type": "String",
                           "defaultValue": "https://management.azure.com/"
+                        },
+                        "deployedAt": {
+                          "type": "String",
+                          "defaultValue": "2000-01-01T00:00:00Z"
+                        },
+                        "permissionGraceMinutes": {
+                          "type": "Int",
+                          "defaultValue": 60
+                        },
+                        "bootstrapMinutes": {
+                          "type": "Int",
+                          "defaultValue": 30
                         }
                       },
                       "triggers": {
@@ -5150,14 +5461,14 @@
                             "select": "@item()?['k']"
                           },
                           "runAfter": {
-                            "State": [
+                            "Silent": [
                               "Succeeded"
                             ]
                           }
                         },
                         "Lookback": {
                           "type": "Compose",
-                          "inputs": "@if(not(equals(outputs('State')?['bootstrapped'], true)), parameters('slowLookback'), if(less(mod(add(mul(int(formatDateTime(utcNow(), 'HH')), 60), int(formatDateTime(utcNow(), 'mm'))), parameters('slowEveryMinutes')), parameters('intervalMinutes')), parameters('slowLookback'), parameters('fastLookback')))",
+                          "inputs": "@if(or(not(equals(outputs('State')?['bootstrapped'], true)), outputs('Silent')), parameters('slowLookback'), if(less(mod(add(mul(int(formatDateTime(utcNow(), 'HH')), 60), int(formatDateTime(utcNow(), 'mm'))), parameters('slowEveryMinutes')), parameters('intervalMinutes')), parameters('slowLookback'), parameters('fastLookback')))",
                           "runAfter": {
                             "Known_keys": [
                               "Succeeded"
@@ -5307,19 +5618,9 @@
                                 ]
                               },
                               {
-                                "or": [
-                                  {
-                                    "equals": [
-                                      "@outputs('State')?['bootstrapped']",
-                                      true
-                                    ]
-                                  },
-                                  {
-                                    "equals": [
-                                      "@parameters('bootstrapSilent')",
-                                      false
-                                    ]
-                                  }
+                                "equals": [
+                                  "@outputs('Silent')",
+                                  false
                                 ]
                               }
                             ]
@@ -5392,7 +5693,8 @@
                             "lookback": "@outputs('Lookback')",
                             "rowsInWindow": "@length(variables('rows'))",
                             "newEvents": "@length(body('New_rows'))",
-                            "keys": "@union(body('Kept_entries'), body('New_entries'))"
+                            "keys": "@union(body('Kept_entries'), body('New_entries'))",
+                            "silentUntil": "@outputs('Silent_until')"
                           },
                           "runAfter": {
                             "Kept_entries": [
@@ -5402,7 +5704,7 @@
                         },
                         "Query_failed": {
                           "type": "If",
-                          "expression": "@and(empty(coalesce(body('Last_good_run')?['value'], json('[]'))), equals(outputs('Query_ARG')?['statusCode'], 403))",
+                          "expression": "@and(equals(outputs('Query_ARG')?['statusCode'], 403), less(utcNow(), addMinutes(parameters('deployedAt'), parameters('permissionGraceMinutes'))))",
                           "actions": {
                             "Reader_not_effective_yet": {
                               "type": "Terminate",
@@ -5431,6 +5733,50 @@
                             "Until_all_pages": [
                               "Failed",
                               "TimedOut"
+                            ]
+                          }
+                        },
+                        "History_unreadable": {
+                          "type": "If",
+                          "expression": "@less(utcNow(), addMinutes(parameters('deployedAt'), parameters('permissionGraceMinutes')))",
+                          "actions": {},
+                          "else": {
+                            "actions": {
+                              "History_unreadable_terminate": {
+                                "type": "Terminate",
+                                "inputs": {
+                                  "runStatus": "Failed",
+                                  "runError": {
+                                    "code": "RunHistoryUnreadable",
+                                    "message": "@{concat('Cannot read this workflow''s run history (dedup state): HTTP ', string(outputs('Last_good_run')?['statusCode']), '. Check the identity''s Reader role on the resource group.')}"
+                                  }
+                                },
+                                "runAfter": {}
+                              }
+                            }
+                          },
+                          "runAfter": {
+                            "Last_good_run": [
+                              "Failed",
+                              "TimedOut"
+                            ]
+                          }
+                        },
+                        "Silent_until": {
+                          "type": "Compose",
+                          "inputs": "@if(equals(outputs('State')?['bootstrapped'], true), coalesce(outputs('State')?['silentUntil'], '2000-01-01T00:00:00Z'), addMinutes(utcNow(), parameters('bootstrapMinutes')))",
+                          "runAfter": {
+                            "State": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Silent": {
+                          "type": "Compose",
+                          "inputs": "@and(parameters('bootstrapSilent'), less(utcNow(), outputs('Silent_until')))",
+                          "runAfter": {
+                            "Silent_until": [
+                              "Succeeded"
                             ]
                           }
                         }
@@ -5500,6 +5846,15 @@
                           },
                           "armAudience": {
                             "value": "[variables('armAudience')]"
+                          },
+                          "deployedAt": {
+                            "value": "[parameters('deployedAt')]"
+                          },
+                          "permissionGraceMinutes": {
+                            "value": "[parameters('permissionGraceMinutes')]"
+                          },
+                          "bootstrapMinutes": {
+                            "value": "[parameters('bootstrapMinutes')]"
                           }
                         }
                       }
@@ -5661,6 +6016,9 @@
           "bootstrapSilent": {
             "value": "[parameters('bootstrapSilent')]"
           },
+          "deployedAt": {
+            "value": "[parameters('deploymentTime')]"
+          },
           "enabled": {
             "value": "[parameters('pullEnabled')]"
           }
@@ -5672,7 +6030,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "16158032790623269108"
+              "templateHash": "11228734910807798402"
             }
           },
           "parameters": {
@@ -5708,6 +6066,10 @@
             "bootstrapSilent": {
               "type": "bool",
               "defaultValue": true
+            },
+            "deployedAt": {
+              "type": "string",
+              "defaultValue": "[utcNow('yyyy-MM-ddTHH:mm:ssZ')]"
             },
             "enabled": {
               "type": "bool",
@@ -5774,6 +6136,9 @@
                   "bootstrapSilent": {
                     "value": "[parameters('bootstrapSilent')]"
                   },
+                  "deployedAt": {
+                    "value": "[parameters('deployedAt')]"
+                  },
                   "intervalMinutes": {
                     "value": 5
                   },
@@ -5797,7 +6162,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.44.1.10279",
-                      "templateHash": "4939433192073609513"
+                      "templateHash": "11918359679246086497"
                     }
                   },
                   "parameters": {
@@ -5871,6 +6236,27 @@
                         "description": "ARG request scope merged into the request body, e.g. {} (all subscriptions the identity can read), { \"managementGroups\": [\"mg-id\"] } or { \"subscriptions\": [\"...\"] }."
                       }
                     },
+                    "deployedAt": {
+                      "type": "string",
+                      "defaultValue": "[utcNow('yyyy-MM-ddTHH:mm:ssZ')]",
+                      "metadata": {
+                        "description": "Deployment time (UTC); see permissionGraceMinutes."
+                      }
+                    },
+                    "bootstrapMinutes": {
+                      "type": "int",
+                      "defaultValue": 30,
+                      "metadata": {
+                        "description": "With bootstrapSilent, every run in the first N minutes after the first successful run only records fingerprints (24h look-back) and sends nothing. Covers Resource Graph returning empty results while the Reader role is still propagating."
+                      }
+                    },
+                    "permissionGraceMinutes": {
+                      "type": "int",
+                      "defaultValue": 60,
+                      "metadata": {
+                        "description": "Minutes after deployment during which HTTP 403 (Reader role not effective yet) cancels the run instead of failing it."
+                      }
+                    },
                     "bootstrapSilent": {
                       "type": "bool",
                       "defaultValue": true,
@@ -5935,6 +6321,18 @@
                         "armAudience": {
                           "type": "String",
                           "defaultValue": "https://management.azure.com/"
+                        },
+                        "deployedAt": {
+                          "type": "String",
+                          "defaultValue": "2000-01-01T00:00:00Z"
+                        },
+                        "permissionGraceMinutes": {
+                          "type": "Int",
+                          "defaultValue": 60
+                        },
+                        "bootstrapMinutes": {
+                          "type": "Int",
+                          "defaultValue": 30
                         }
                       },
                       "triggers": {
@@ -6065,14 +6463,14 @@
                             "select": "@item()?['k']"
                           },
                           "runAfter": {
-                            "State": [
+                            "Silent": [
                               "Succeeded"
                             ]
                           }
                         },
                         "Lookback": {
                           "type": "Compose",
-                          "inputs": "@if(not(equals(outputs('State')?['bootstrapped'], true)), parameters('slowLookback'), if(less(mod(add(mul(int(formatDateTime(utcNow(), 'HH')), 60), int(formatDateTime(utcNow(), 'mm'))), parameters('slowEveryMinutes')), parameters('intervalMinutes')), parameters('slowLookback'), parameters('fastLookback')))",
+                          "inputs": "@if(or(not(equals(outputs('State')?['bootstrapped'], true)), outputs('Silent')), parameters('slowLookback'), if(less(mod(add(mul(int(formatDateTime(utcNow(), 'HH')), 60), int(formatDateTime(utcNow(), 'mm'))), parameters('slowEveryMinutes')), parameters('intervalMinutes')), parameters('slowLookback'), parameters('fastLookback')))",
                           "runAfter": {
                             "Known_keys": [
                               "Succeeded"
@@ -6222,19 +6620,9 @@
                                 ]
                               },
                               {
-                                "or": [
-                                  {
-                                    "equals": [
-                                      "@outputs('State')?['bootstrapped']",
-                                      true
-                                    ]
-                                  },
-                                  {
-                                    "equals": [
-                                      "@parameters('bootstrapSilent')",
-                                      false
-                                    ]
-                                  }
+                                "equals": [
+                                  "@outputs('Silent')",
+                                  false
                                 ]
                               }
                             ]
@@ -6307,7 +6695,8 @@
                             "lookback": "@outputs('Lookback')",
                             "rowsInWindow": "@length(variables('rows'))",
                             "newEvents": "@length(body('New_rows'))",
-                            "keys": "@union(body('Kept_entries'), body('New_entries'))"
+                            "keys": "@union(body('Kept_entries'), body('New_entries'))",
+                            "silentUntil": "@outputs('Silent_until')"
                           },
                           "runAfter": {
                             "Kept_entries": [
@@ -6317,7 +6706,7 @@
                         },
                         "Query_failed": {
                           "type": "If",
-                          "expression": "@and(empty(coalesce(body('Last_good_run')?['value'], json('[]'))), equals(outputs('Query_ARG')?['statusCode'], 403))",
+                          "expression": "@and(equals(outputs('Query_ARG')?['statusCode'], 403), less(utcNow(), addMinutes(parameters('deployedAt'), parameters('permissionGraceMinutes'))))",
                           "actions": {
                             "Reader_not_effective_yet": {
                               "type": "Terminate",
@@ -6346,6 +6735,50 @@
                             "Until_all_pages": [
                               "Failed",
                               "TimedOut"
+                            ]
+                          }
+                        },
+                        "History_unreadable": {
+                          "type": "If",
+                          "expression": "@less(utcNow(), addMinutes(parameters('deployedAt'), parameters('permissionGraceMinutes')))",
+                          "actions": {},
+                          "else": {
+                            "actions": {
+                              "History_unreadable_terminate": {
+                                "type": "Terminate",
+                                "inputs": {
+                                  "runStatus": "Failed",
+                                  "runError": {
+                                    "code": "RunHistoryUnreadable",
+                                    "message": "@{concat('Cannot read this workflow''s run history (dedup state): HTTP ', string(outputs('Last_good_run')?['statusCode']), '. Check the identity''s Reader role on the resource group.')}"
+                                  }
+                                },
+                                "runAfter": {}
+                              }
+                            }
+                          },
+                          "runAfter": {
+                            "Last_good_run": [
+                              "Failed",
+                              "TimedOut"
+                            ]
+                          }
+                        },
+                        "Silent_until": {
+                          "type": "Compose",
+                          "inputs": "@if(equals(outputs('State')?['bootstrapped'], true), coalesce(outputs('State')?['silentUntil'], '2000-01-01T00:00:00Z'), addMinutes(utcNow(), parameters('bootstrapMinutes')))",
+                          "runAfter": {
+                            "State": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Silent": {
+                          "type": "Compose",
+                          "inputs": "@and(parameters('bootstrapSilent'), less(utcNow(), outputs('Silent_until')))",
+                          "runAfter": {
+                            "Silent_until": [
+                              "Succeeded"
                             ]
                           }
                         }
@@ -6415,6 +6848,15 @@
                           },
                           "armAudience": {
                             "value": "[variables('armAudience')]"
+                          },
+                          "deployedAt": {
+                            "value": "[parameters('deployedAt')]"
+                          },
+                          "permissionGraceMinutes": {
+                            "value": "[parameters('permissionGraceMinutes')]"
+                          },
+                          "bootstrapMinutes": {
+                            "value": "[parameters('bootstrapMinutes')]"
                           }
                         }
                       }

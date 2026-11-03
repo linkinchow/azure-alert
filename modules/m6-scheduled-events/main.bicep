@@ -13,6 +13,7 @@ param actionGroupId string = ''
 param argScope object = {}
 param excludedSubscriptionIds array = []
 param bootstrapSilent bool = true
+param deployedAt string = utcNow('yyyy-MM-ddTHH:mm:ssZ')
 param enabled bool = true
 
 @description('Event statuses to alert on. Scheduled = advance notice (only when the event is not auto-approved), Started / Completed / Canceled = progress.')
@@ -48,6 +49,7 @@ module pull '../shared/pull-module.bicep' = {
     argScope: argScope
     excludedSubscriptionIds: excludedSubscriptionIds
     bootstrapSilent: bootstrapSilent
+    deployedAt: deployedAt
     intervalMinutes: 1
     retentionHours: 720
     enabled: enabled

@@ -49,6 +49,18 @@
     "armAudience": {
       "type": "String",
       "defaultValue": "https://management.azure.com/"
+    },
+    "deployedAt": {
+      "type": "String",
+      "defaultValue": "2000-01-01T00:00:00Z"
+    },
+    "permissionGraceMinutes": {
+      "type": "Int",
+      "defaultValue": 60
+    },
+    "bootstrapMinutes": {
+      "type": "Int",
+      "defaultValue": 30
     }
   },
   "triggers": {
@@ -179,14 +191,14 @@
         "select": "@item()?['k']"
       },
       "runAfter": {
-        "State": [
+        "Silent": [
           "Succeeded"
         ]
       }
     },
     "Lookback": {
       "type": "Compose",
-      "inputs": "@if(not(equals(outputs('State')?['bootstrapped'], true)), parameters('slowLookback'), if(less(mod(add(mul(int(formatDateTime(utcNow(), 'HH')), 60), int(formatDateTime(utcNow(), 'mm'))), parameters('slowEveryMinutes')), parameters('intervalMinutes')), parameters('slowLookback'), parameters('fastLookback')))",
+      "inputs": "@if(or(not(equals(outputs('State')?['bootstrapped'], true)), outputs('Silent')), parameters('slowLookback'), if(less(mod(add(mul(int(formatDateTime(utcNow(), 'HH')), 60), int(formatDateTime(utcNow(), 'mm'))), parameters('slowEveryMinutes')), parameters('intervalMinutes')), parameters('slowLookback'), parameters('fastLookback')))",
       "runAfter": {
         "Known_keys": [
           "Succeeded"
@@ -336,19 +348,9 @@
             ]
           },
           {
-            "or": [
-              {
-                "equals": [
-                  "@outputs('State')?['bootstrapped']",
-                  true
-                ]
-              },
-              {
-                "equals": [
-                  "@parameters('bootstrapSilent')",
-                  false
-                ]
-              }
+            "equals": [
+              "@outputs('Silent')",
+              false
             ]
           }
         ]
@@ -421,7 +423,8 @@
         "lookback": "@outputs('Lookback')",
         "rowsInWindow": "@length(variables('rows'))",
         "newEvents": "@length(body('New_rows'))",
-        "keys": "@union(body('Kept_entries'), body('New_entries'))"
+        "keys": "@union(body('Kept_entries'), body('New_entries'))",
+        "silentUntil": "@outputs('Silent_until')"
       },
       "runAfter": {
         "Kept_entries": [
@@ -431,7 +434,7 @@
     },
     "Query_failed": {
       "type": "If",
-      "expression": "@and(empty(coalesce(body('Last_good_run')?['value'], json('[]'))), equals(outputs('Query_ARG')?['statusCode'], 403))",
+      "expression": "@and(equals(outputs('Query_ARG')?['statusCode'], 403), less(utcNow(), addMinutes(parameters('deployedAt'), parameters('permissionGraceMinutes'))))",
       "actions": {
         "Reader_not_effective_yet": {
           "type": "Terminate",
@@ -460,6 +463,50 @@
         "Until_all_pages": [
           "Failed",
           "TimedOut"
+        ]
+      }
+    },
+    "History_unreadable": {
+      "type": "If",
+      "expression": "@less(utcNow(), addMinutes(parameters('deployedAt'), parameters('permissionGraceMinutes')))",
+      "actions": {},
+      "else": {
+        "actions": {
+          "History_unreadable_terminate": {
+            "type": "Terminate",
+            "inputs": {
+              "runStatus": "Failed",
+              "runError": {
+                "code": "RunHistoryUnreadable",
+                "message": "@{concat('Cannot read this workflow''s run history (dedup state): HTTP ', string(outputs('Last_good_run')?['statusCode']), '. Check the identity''s Reader role on the resource group.')}"
+              }
+            },
+            "runAfter": {}
+          }
+        }
+      },
+      "runAfter": {
+        "Last_good_run": [
+          "Failed",
+          "TimedOut"
+        ]
+      }
+    },
+    "Silent_until": {
+      "type": "Compose",
+      "inputs": "@if(equals(outputs('State')?['bootstrapped'], true), coalesce(outputs('State')?['silentUntil'], '2000-01-01T00:00:00Z'), addMinutes(utcNow(), parameters('bootstrapMinutes')))",
+      "runAfter": {
+        "State": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Silent": {
+      "type": "Compose",
+      "inputs": "@and(parameters('bootstrapSilent'), less(utcNow(), outputs('Silent_until')))",
+      "runAfter": {
+        "Silent_until": [
+          "Succeeded"
         ]
       }
     }

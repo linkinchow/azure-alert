@@ -29,6 +29,15 @@ param excludedSubscriptionIds array = []
 @description('ARG request scope merged into the request body, e.g. {} (all subscriptions the identity can read), { "managementGroups": ["mg-id"] } or { "subscriptions": ["..."] }.')
 param argScope object = {}
 
+@description('Deployment time (UTC); see permissionGraceMinutes.')
+param deployedAt string = utcNow('yyyy-MM-ddTHH:mm:ssZ')
+
+@description('With bootstrapSilent, every run in the first N minutes after the first successful run only records fingerprints (24h look-back) and sends nothing. Covers Resource Graph returning empty results while the Reader role is still propagating.')
+param bootstrapMinutes int = 30
+
+@description('Minutes after deployment during which HTTP 403 (Reader role not effective yet) cancels the run instead of failing it.')
+param permissionGraceMinutes int = 60
+
 @description('When true, the first run only records fingerprints without sending, to avoid flooding the groups with history on first deployment.')
 param bootstrapSilent bool = true
 
@@ -118,6 +127,15 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
       }
       armAudience: {
         value: armAudience
+      }
+      deployedAt: {
+        value: deployedAt
+      }
+      permissionGraceMinutes: {
+        value: permissionGraceMinutes
+      }
+      bootstrapMinutes: {
+        value: bootstrapMinutes
       }
     }
   }

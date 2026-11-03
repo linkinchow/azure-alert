@@ -11,6 +11,7 @@ param actionGroupId string = ''
 param argScope object = {}
 param excludedSubscriptionIds array = []
 param bootstrapSilent bool = true
+param deployedAt string = utcNow('yyyy-MM-ddTHH:mm:ssZ')
 param fastLookback string = '2h'
 param slowLookback string = '24h'
 param enabled bool = true
@@ -64,6 +65,7 @@ module pull '../shared/pull-module.bicep' = [for v in variants: {
     argScope: argScope
     excludedSubscriptionIds: excludedSubscriptionIds
     bootstrapSilent: bootstrapSilent
+    deployedAt: deployedAt
     fastLookback: fastLookback
     slowLookback: slowLookback
     enabled: enabled

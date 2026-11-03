@@ -11,6 +11,7 @@ param actionGroupId string = ''
 param argScope object = {}
 param excludedSubscriptionIds array = []
 param bootstrapSilent bool = true
+param deployedAt string = utcNow('yyyy-MM-ddTHH:mm:ssZ')
 param enabled bool = true
 
 @description('Usage bands in percent, ascending. The highest band is reported as Critical, the others as Warning.')
@@ -41,6 +42,7 @@ module pull '../shared/pull-module.bicep' = {
     argScope: argScope
     excludedSubscriptionIds: excludedSubscriptionIds
     bootstrapSilent: bootstrapSilent
+    deployedAt: deployedAt
     intervalMinutes: 15
     retentionHours: reminderHours
     enabled: enabled

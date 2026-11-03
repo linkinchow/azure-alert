@@ -10,6 +10,7 @@ param actionGroupId string = ''
 param argScope object = {}
 param excludedSubscriptionIds array = []
 param bootstrapSilent bool = true
+param deployedAt string = utcNow('yyyy-MM-ddTHH:mm:ssZ')
 param enabled bool = true
 
 @description('Event kinds to alert on: OutOfSupport (weekly reminder), EOLSoon (2 weeks / 1 week before EOL), UpgradeScheduled (pre-notice), UpgradeNotSucceeded (failed / canceled), UpgradeSkipped (skipped, e.g. cluster stopped), Routine (started / succeeded).')
@@ -36,6 +37,7 @@ module pull '../shared/pull-module.bicep' = {
     argScope: argScope
     excludedSubscriptionIds: excludedSubscriptionIds
     bootstrapSilent: bootstrapSilent
+    deployedAt: deployedAt
     intervalMinutes: 5
     fastLookback: '2h'
     slowLookback: '24h'

@@ -58,6 +58,9 @@ param excludedSubscriptionIds array = []
 @description('First run of each pull module only records fingerprints without sending.')
 param bootstrapSilent bool = true
 
+@description('Deployment time (UTC). Pull modules treat HTTP 403 as "Reader role not effective yet" only within permissionGraceMinutes after this time; later a 403 fails the run (self-monitoring alert). Leave the default.')
+param deploymentTime string = utcNow('yyyy-MM-ddTHH:mm:ssZ')
+
 param fastLookback string = '2h'
 param slowLookback string = '24h'
 
@@ -149,6 +152,7 @@ module m1 'modules/m1-service-health/main.bicep' = if (modules.?serviceHealth ??
     argScope: argScope
     excludedSubscriptionIds: excludedSubscriptionIds
     bootstrapSilent: bootstrapSilent
+    deployedAt: deploymentTime
     fastLookback: fastLookback
     slowLookback: slowLookback
     enabled: pullEnabled
@@ -168,6 +172,7 @@ module m2 'modules/m2-flash/main.bicep' = if (modules.?flash ?? false) {
     argScope: argScope
     excludedSubscriptionIds: excludedSubscriptionIds
     bootstrapSilent: bootstrapSilent
+    deployedAt: deploymentTime
     fastLookback: fastLookback
     slowLookback: slowLookback
     enabled: pullEnabled
@@ -187,6 +192,7 @@ module m5 'modules/m5-quota/main.bicep' = if (modules.?quota ?? false) {
     argScope: argScope
     excludedSubscriptionIds: excludedSubscriptionIds
     bootstrapSilent: bootstrapSilent
+    deployedAt: deploymentTime
     enabled: pullEnabled
   }
 }
@@ -204,6 +210,7 @@ module m6 'modules/m6-scheduled-events/main.bicep' = if (modules.?scheduledEvent
     argScope: argScope
     excludedSubscriptionIds: excludedSubscriptionIds
     bootstrapSilent: bootstrapSilent
+    deployedAt: deploymentTime
     enabled: pullEnabled
   }
 }
@@ -221,6 +228,7 @@ module m8 'modules/m8-aks/main.bicep' = if (modules.?aks ?? false) {
     argScope: argScope
     excludedSubscriptionIds: excludedSubscriptionIds
     bootstrapSilent: bootstrapSilent
+    deployedAt: deploymentTime
     enabled: pullEnabled
   }
 }
