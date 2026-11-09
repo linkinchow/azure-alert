@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "6075854211373897172"
+      "templateHash": "12972643798823056423"
     }
   },
   "parameters": {
@@ -1710,12 +1710,12 @@
     {
       "copy": {
         "name": "readerSub",
-        "count": "[length(if(equals(parameters('readerScope'), 'subscription'), parameters('readerSubscriptionIds'), createArray()))]"
+        "count": "[length(if(equals(parameters('readerScope'), 'subscription'), union(parameters('readerSubscriptionIds'), createArray()), createArray()))]"
       },
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
-      "name": "[format('{0}-reader-{1}', parameters('prefix'), uniqueString(if(equals(parameters('readerScope'), 'subscription'), parameters('readerSubscriptionIds'), createArray())[copyIndex()]))]",
-      "subscriptionId": "[if(equals(parameters('readerScope'), 'subscription'), parameters('readerSubscriptionIds'), createArray())[copyIndex()]]",
+      "name": "[format('{0}-reader-{1}', parameters('prefix'), uniqueString(if(equals(parameters('readerScope'), 'subscription'), union(parameters('readerSubscriptionIds'), createArray()), createArray())[copyIndex()]))]",
+      "subscriptionId": "[if(equals(parameters('readerScope'), 'subscription'), union(parameters('readerSubscriptionIds'), createArray()), createArray())[copyIndex()]]",
       "location": "[deployment().location]",
       "properties": {
         "expressionEvaluationOptions": {
@@ -6984,12 +6984,12 @@
     {
       "copy": {
         "name": "pushRg",
-        "count": "[length(if(variables('anyPush'), parameters('pushSubscriptionIds'), createArray()))]"
+        "count": "[length(if(variables('anyPush'), union(parameters('pushSubscriptionIds'), createArray()), createArray()))]"
       },
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
-      "name": "[format('{0}-push-rg-{1}', parameters('prefix'), uniqueString(if(variables('anyPush'), parameters('pushSubscriptionIds'), createArray())[copyIndex()]))]",
-      "subscriptionId": "[if(variables('anyPush'), parameters('pushSubscriptionIds'), createArray())[copyIndex()]]",
+      "name": "[format('{0}-push-rg-{1}', parameters('prefix'), uniqueString(if(variables('anyPush'), union(parameters('pushSubscriptionIds'), createArray()), createArray())[copyIndex()]))]",
+      "subscriptionId": "[if(variables('anyPush'), union(parameters('pushSubscriptionIds'), createArray()), createArray())[copyIndex()]]",
       "location": "[deployment().location]",
       "properties": {
         "expressionEvaluationOptions": {
@@ -7044,12 +7044,12 @@
     {
       "copy": {
         "name": "push",
-        "count": "[length(if(variables('anyPush'), parameters('pushSubscriptionIds'), createArray()))]"
+        "count": "[length(if(variables('anyPush'), union(parameters('pushSubscriptionIds'), createArray()), createArray()))]"
       },
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
-      "name": "[format('{0}-push-{1}', parameters('prefix'), uniqueString(if(variables('anyPush'), parameters('pushSubscriptionIds'), createArray())[copyIndex()]))]",
-      "subscriptionId": "[if(variables('anyPush'), parameters('pushSubscriptionIds'), createArray())[copyIndex()]]",
+      "name": "[format('{0}-push-{1}', parameters('prefix'), uniqueString(if(variables('anyPush'), union(parameters('pushSubscriptionIds'), createArray()), createArray())[copyIndex()]))]",
+      "subscriptionId": "[if(variables('anyPush'), union(parameters('pushSubscriptionIds'), createArray()), createArray())[copyIndex()]]",
       "resourceGroup": "[parameters('pushResourceGroupName')]",
       "properties": {
         "expressionEvaluationOptions": {
@@ -7066,7 +7066,7 @@
           "actionGroupId": {
             "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', format('{0}-core', parameters('prefix'))), '2025-04-01').outputs.actionGroupId.value]"
           },
-          "scopeId": "[if(parameters('pushScopeToResourceGroup'), createObject('value', format('/subscriptions/{0}/resourceGroups/{1}', if(variables('anyPush'), parameters('pushSubscriptionIds'), createArray())[copyIndex()], parameters('pushResourceGroupName'))), createObject('value', ''))]",
+          "scopeId": "[if(parameters('pushScopeToResourceGroup'), createObject('value', format('/subscriptions/{0}/resourceGroups/{1}', if(variables('anyPush'), union(parameters('pushSubscriptionIds'), createArray()), createArray())[copyIndex()], parameters('pushResourceGroupName'))), createObject('value', ''))]",
           "enableResourceHealth": {
             "value": "[coalesce(tryGet(parameters('modules'), 'resourceHealth'), false())]"
           },
@@ -7373,7 +7373,7 @@
       },
       "dependsOn": [
         "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', format('{0}-core', parameters('prefix')))]",
-        "[subscriptionResourceId(if(variables('anyPush'), parameters('pushSubscriptionIds'), createArray())[copyIndex()], 'Microsoft.Resources/deployments', format('{0}-push-rg-{1}', parameters('prefix'), uniqueString(if(variables('anyPush'), parameters('pushSubscriptionIds'), createArray())[copyIndex()])))]"
+        "[subscriptionResourceId(if(variables('anyPush'), union(parameters('pushSubscriptionIds'), createArray()), createArray())[copyIndex()], 'Microsoft.Resources/deployments', format('{0}-push-rg-{1}', parameters('prefix'), uniqueString(if(variables('anyPush'), union(parameters('pushSubscriptionIds'), createArray()), createArray())[copyIndex()])))]"
       ]
     }
   ],

@@ -21,7 +21,7 @@
 | 自监控 | Logic App `RunsFailed` 指标 | 每个 workflow 一条 metric alert，分类为 `SelfMonitor` | 随 core / 模块部署 |
 | 数据落地（可选） | — | Log Analytics 自定义表 `AzureAlertEvents_CL`（DCR + Logs Ingestion API） | `sinkEnabled=false` |
 
-部署时用 `modules` 参数开关模块，例如 `{"serviceHealth": true, "flash": true}` 表示只部署这两个。
+部署时可以只选部分模块：门户向导里在"告警模块"一步勾选；命令行用 `modules` 参数，见[命令行部署](#命令行部署)。
 
 ## 目录
 
@@ -57,13 +57,9 @@ test/                         测试参数（webhook 放在 *.local.json，不�
 
    发到多个飞书群的写法见下面的[多个飞书群（按分类路由）](#多个飞书群按分类路由)。
 
-3. 部署：
+3. 部署：见下面的[命令行部署](#命令行部署)，或者用[一键部署](#一键部署deploy-to-azure)。
 
-   ```bash
-   az deployment sub create -l eastus2 -f main.bicep -p location=eastus2 resourceGroupName=rg-azure-alert -p @webhooks.local.json
-   ```
-
-   常用参数：
+   常用参数（完整列表见 `main.bicep` 开头的 `param`）：
 
    | 参数 | 说明 |
    |---|---|
@@ -72,6 +68,73 @@ test/                         测试参数（webhook 放在 *.local.json，不�
    | `metricRegions` | M4 多资源 metric 规则的区域列表 |
    | `bootstrapSilent` | 默认 `true`：全新部署后，每个 Pull 模块从第一次成功运行起 30 分钟内只记录指纹、不发送（每次回看 24 小时），避免把历史事件一次性推进群。重新部署、更新模板不会再次静默 |
    | `feishuMaxAttempts` | 默认 `8`：飞书限流时每条消息最多发送几次（见下文"飞书限流"） |
+
+### 命令行部署
+
+先拿到最新代码（`git clone https://github.com/linkinchow/azure-alert.git`，已有的话 `git pull`），在仓库根目录执行。需要 Azure CLI，Bicep 会自动安装；也可以把 `main.bicep` 换成编译好的 `azuredeploy.json`，效果一样。
+
+**1. 准备参数文件**，例如 `deploy.local.json`（文件名以 `.local.json` 结尾不会被提交到 git）：
+
+```json
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": { "value": "eastus2" },
+    "resourceGroupName": { "value": "rg-azure-alert" },
+    "prefix": { "value": "aa" },
+    "modules": { "value": {
+      "serviceHealth": true,
+      "flash": true,
+      "resourceHealth": true,
+      "metric": false,
+      "quota": true,
+      "scheduledEvents": true,
+      "activityFailure": false,
+      "aks": true
+    } },
+    "defaultWebhook": { "value": "https://open.feishu.cn/open-apis/bot/v2/hook/<默认群>" },
+    "webhooks": { "value": {} },
+    "readerSubscriptionIds": { "value": ["<要告警的订阅 ID>", "<订阅 ID 2>"] },
+    "argScope": { "value": { "subscriptions": ["<要告警的订阅 ID>", "<订阅 ID 2>"] } },
+    "pushSubscriptionIds": { "value": ["<要告警的订阅 ID>", "<订阅 ID 2>"] },
+    "metricRegions": { "value": ["eastus2"] }
+  }
+}
+```
+
+**2. 部署**（在要放中心资源组的订阅下执行）：
+
+```bash
+az account set --subscription <中心订阅 ID>
+az deployment sub create -l eastus2 -n azure-alert -f main.bicep -p @deploy.local.json
+```
+
+**选择模块**（参数 `modules`）：值为 `true` 的模块才部署，没写或写 `false` 的不部署。
+
+| 键 | 模块 |
+|---|---|
+| `serviceHealth` | M1 服务健康 |
+| `flash` | M2 Project Flash（VM / VMSS 平台事件） |
+| `resourceHealth` | M3 资源健康 |
+| `metric` | M4 指标 |
+| `quota` | M5 计算配额 |
+| `scheduledEvents` | M6 计划事件（需要先满足先决条件，见 `modules/m6-scheduled-events/README.md`） |
+| `activityFailure` | M7 资源操作失败 |
+| `aks` | M8 AKS |
+
+上面的例子不部署 M4 和 M7。不传 `modules` 时全部部署。
+
+**其他说明：**
+
+- 订阅相关的三个参数：
+  - `readerSubscriptionIds`：给告警系统的托管身份授予 Reader 的订阅；
+  - `argScope`：Pull 模块（M1 / M2 / M5 / M6 / M8）查询的订阅，通常和上面相同；
+  - `pushSubscriptionIds`：建 M3 / M4 / M7 告警规则的订阅。
+  - 都不传时，默认只用当前订阅。
+- 只临时改某个参数时，可以在参数文件后面再加 `-p`，后出现的为准。例如 bash 下：`-p @deploy.local.json -p modules='{"serviceHealth":true,"flash":true}'`。PowerShell 的引号规则不同，建议直接改参数文件。
+- 多个飞书群的写法见[多个飞书群（按分类路由）](#多个飞书群按分类路由)，填在 `webhooks` 里。
+- 重新部署（改参数、升级到新版本）可以重复执行同一条命令，已有资源会就地更新。**把某个模块改成 `false` 不会删除之前已经建好的资源**，需要的话手动删除（资源名以 `<前缀>-m<编号>` 开头）。
 
 ### 多个飞书群（按分类路由）
 

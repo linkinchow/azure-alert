@@ -132,7 +132,8 @@ module core 'modules/core/main.bicep' = {
   }
 }
 
-module readerSub 'modules/shared/reader-subscription.bicep' = [for sub in (readerScope == 'subscription' ? readerSubscriptionIds : []): {
+// union(x, []) removes duplicate subscription ids (a duplicate would fail the deployment with "defined multiple times").
+module readerSub 'modules/shared/reader-subscription.bicep' = [for sub in (readerScope == 'subscription' ? union(readerSubscriptionIds, []) : []): {
   name: '${prefix}-reader-${uniqueString(sub)}'
   scope: subscription(sub)
   params: {
@@ -234,7 +235,7 @@ module m8 'modules/m8-aks/main.bicep' = if (modules.?aks ?? false) {
   }
 }
 
-module pushRg 'modules/shared/resource-group.bicep' = [for sub in (anyPush ? pushSubscriptionIds : []): {
+module pushRg 'modules/shared/resource-group.bicep' = [for sub in (anyPush ? union(pushSubscriptionIds, []) : []): {
   name: '${prefix}-push-rg-${uniqueString(sub)}'
   scope: subscription(sub)
   params: {
@@ -244,7 +245,7 @@ module pushRg 'modules/shared/resource-group.bicep' = [for sub in (anyPush ? pus
   }
 }]
 
-module push 'modules/push/main.bicep' = [for (sub, i) in (anyPush ? pushSubscriptionIds : []): {
+module push 'modules/push/main.bicep' = [for (sub, i) in (anyPush ? union(pushSubscriptionIds, []) : []): {
   name: '${prefix}-push-${uniqueString(sub)}'
   scope: resourceGroup(sub, pushResourceGroupName)
   dependsOn: [
