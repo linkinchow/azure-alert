@@ -43,14 +43,17 @@ param activityFailureLevels array = [
 @description('M7: optional operation filter; empty = every operation.')
 param activityFailureOperations array = []
 
-var activityLevelItems = [for l in activityFailureLevels: {
+// One flat condition per field: Azure rejects (UnsupportedCondition) a subscription-wide
+// Administrative alert rule whose only extra conditions are grouped with anyOf/allOf, so
+// multiple values go through containsAny instead.
+var activityLevelCondition = {
   field: 'level'
-  equals: l
-}]
-var activityOperationItems = [for op in activityFailureOperations: {
+  containsAny: activityFailureLevels
+}
+var activityOperationCondition = {
   field: 'operationName'
-  equals: op
-}]
+  containsAny: activityFailureOperations
+}
 
 var watchScope = empty(scopeId) ? subscription().id : scopeId
 var actions = {
@@ -111,13 +114,9 @@ resource activityFailure 'Microsoft.Insights/activityLogAlerts@2020-10-01' = if 
           field: 'category'
           equals: 'Administrative'
         }
-        {
-          anyOf: activityLevelItems
-        }
+        activityLevelCondition
       ], empty(activityFailureOperations) ? [] : [
-        {
-          anyOf: activityOperationItems
-        }
+        activityOperationCondition
       ])
     }
     actions: actions
