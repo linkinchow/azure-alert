@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "7180644098759652138"
+      "templateHash": "6075854211373897172"
     }
   },
   "parameters": {
@@ -55,7 +55,7 @@
       "type": "secureObject",
       "defaultValue": {},
       "metadata": {
-        "description": "Feishu webhook per category. Keys: full category (e.g. Flash.HostFailure), category prefix (e.g. ServiceHealth) or default."
+        "description": "Feishu webhook per category. Keys: full category (e.g. Flash.HostFailure), category prefix (e.g. ServiceHealth) or default. Entries with an empty value are ignored, so a template with every category can be left partly blank."
       }
     },
     "defaultWebhook": {
@@ -228,7 +228,9 @@
           "tags": {
             "value": "[parameters('tags')]"
           },
-          "webhooks": "[if(empty(parameters('defaultWebhook')), createObject('value', parameters('webhooks')), createObject('value', union(parameters('webhooks'), createObject('default', parameters('defaultWebhook')))))]",
+          "webhooks": {
+            "value": "[union(toObject(filter(items(parameters('webhooks')), lambda('w', not(empty(lambdaVariables('w').value)))), lambda('w', lambdaVariables('w').key), lambda('w', lambdaVariables('w').value)), if(empty(parameters('defaultWebhook')), createObject(), createObject('default', parameters('defaultWebhook'))))]"
+          },
           "alertCategoryMap": {
             "value": "[variables('alertCategoryMap')]"
           },
@@ -7091,7 +7093,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "7396781144150334721"
+              "templateHash": "5884332290512938613"
             }
           },
           "parameters": {
@@ -7186,14 +7188,6 @@
           "variables": {
             "copy": [
               {
-                "name": "activityLevelItems",
-                "count": "[length(parameters('activityFailureLevels'))]",
-                "input": {
-                  "field": "level",
-                  "equals": "[parameters('activityFailureLevels')[copyIndex('activityLevelItems')]]"
-                }
-              },
-              {
                 "name": "activityOperationItems",
                 "count": "[length(parameters('activityFailureOperations'))]",
                 "input": {
@@ -7274,7 +7268,7 @@
                   "[variables('watchScope')]"
                 ],
                 "condition": {
-                  "allOf": "[concat(createArray(createObject('field', 'category', 'equals', 'Administrative'), createObject('anyOf', variables('activityLevelItems'))), if(empty(parameters('activityFailureOperations')), createArray(), createArray(createObject('anyOf', variables('activityOperationItems')))))]"
+                  "allOf": "[concat(createArray(createObject('field', 'category', 'equals', 'Administrative'), createObject('field', 'level', 'containsAny', parameters('activityFailureLevels'))), if(empty(parameters('activityFailureOperations')), createArray(), createArray(createObject('anyOf', variables('activityOperationItems')))))]"
                 },
                 "actions": "[variables('actions')]"
               }

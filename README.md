@@ -55,7 +55,7 @@ test/                         测试参数（webhook 放在 *.local.json，不�
    }
    ```
 
-   路由规则：先按完整 category（如 `Flash.HostFailure`）找，找不到再按前缀（如 `ServiceHealth`）找，最后用 `default`。要做到"一类一群"，就为每个 category 配一个 webhook。
+   发到多个飞书群的写法见下面的[多个飞书群（按分类路由）](#多个飞书群按分类路由)。
 
 3. 部署：
 
@@ -72,6 +72,69 @@ test/                         测试参数（webhook 放在 *.local.json，不�
    | `metricRegions` | M4 多资源 metric 规则的区域列表 |
    | `bootstrapSilent` | 默认 `true`：全新部署后，每个 Pull 模块从第一次成功运行起 30 分钟内只记录指纹、不发送（每次回看 24 小时），避免把历史事件一次性推进群。重新部署、更新模板不会再次静默 |
    | `feishuMaxAttempts` | 默认 `8`：飞书限流时每条消息最多发送几次（见下文"飞书限流"） |
+
+### 多个飞书群（按分类路由）
+
+每条告警都有一个分类（category），例如 `Flash.HostFailure`。Router 按下面的顺序决定发到哪个群：
+
+1. 完整分类名，例如 `Flash.HostFailure`；
+2. 分类前缀（第一个点之前的部分），例如 `Flash`；
+3. `default`（部署向导里的"默认飞书 webhook"）。
+
+值为空字符串的项会被忽略，等同于没写。
+
+**部署向导**的"按分类路由"已经预填了每个模块的前缀，值都是空的。在想单独建群的模块后面填上 webhook，其余留空，就会发到默认群。
+
+| 键 | 对应模块 | 可单独指定的完整分类 |
+|---|---|---|
+| `ServiceHealth` | M1 服务健康 | `.ServiceIssue` `.PlannedMaintenance` `.HealthAdvisory` `.SecurityAdvisory` `.Billing` |
+| `Flash` | M2 VM / VMSS 平台事件 | `.HostFailure` `.DegradedHardware` `.LiveMigration` `.PlannedFreeze` `.PlannedMaintenance` `.VMCrash` `.StorageOffline` `.ProvisioningTimeout` `.SpotEviction` |
+| `ResourceHealth` | M3 资源健康 | （没有小类） |
+| `Metric` | M4 指标 | `.VmCpu` `.DataDiskBandwidth` `.Other` |
+| `Quota` | M5 计算配额 | `.Compute` |
+| `ScheduledEvent` | M6 计划事件 | `.Reboot` `.Redeploy` `.Freeze` `.Preempt` `.Terminate` |
+| `ActivityFailure` | M7 资源操作失败 | `.Capacity` `.Quota` `.Policy` `.Other` |
+| `AKS` | M8 AKS | `.Upgrade` `.VersionEOL` |
+| `SelfMonitor` | 告警系统自检 | （没有小类） |
+| `LogAlert` | 客户自建的日志告警 | （没有小类） |
+
+每个分类的中文名和含义见 [docs/alert-catalog.md](docs/alert-catalog.md) 第 11 节。
+
+**示例**：服务健康、VM 平台事件、操作失败各一个群；主机故障和 Spot 抢占再单独各一个群；其余（资源健康、指标、配额、计划事件、AKS、自检）发到默认群。
+
+```json
+{
+  "ServiceHealth": "https://open.feishu.cn/open-apis/bot/v2/hook/<服务健康群>",
+  "Flash": "https://open.feishu.cn/open-apis/bot/v2/hook/<VM 平台事件群>",
+  "Flash.HostFailure": "https://open.feishu.cn/open-apis/bot/v2/hook/<主机故障群>",
+  "Flash.SpotEviction": "https://open.feishu.cn/open-apis/bot/v2/hook/<Spot 群>",
+  "ResourceHealth": "",
+  "Metric": "",
+  "Quota": "",
+  "ScheduledEvent": "",
+  "ActivityFailure": "https://open.feishu.cn/open-apis/bot/v2/hook/<操作失败群>",
+  "AKS": "",
+  "SelfMonitor": ""
+}
+```
+
+结果：
+
+| 告警 | 发到 |
+|---|---|
+| 主机故障 | 主机故障群（完整分类优先） |
+| Spot 抢占 | Spot 群 |
+| 硬件降级、热迁移等其他 Flash 小类 | VM 平台事件群 |
+| 服务问题、健康公告等 | 服务健康群 |
+| 所有操作失败 | 操作失败群 |
+| 资源健康、指标、配额、计划事件、AKS、自检 | 默认群 |
+
+注意：
+
+- 分类名区分大小写；键和值都用英文双引号，最后一项后面不要加逗号。
+- 多个分类发到同一个群，填同一个地址即可。
+- 飞书自定义机器人每个机器人每分钟最多 100 条。告警量大的分类（例如 `ActivityFailure`、`Flash.SpotEviction`）建议单独用一个群，避免挤占其他告警的额度。
+- 用命令行部署时，把同样的对象作为参数 `webhooks` 的值，`default` 也可以直接写在里面（见上面第 2 步）。
 
 ### 一键部署（Deploy to Azure）
 

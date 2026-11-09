@@ -149,16 +149,26 @@
             "toolTip": "飞书群自定义机器人的 webhook 地址。没有在\"按分类路由\"里单独指定的告警都发到这里。"
           },
           {
+            "name": "routingInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": true,
+            "options": {
+              "style": "Info",
+              "text": "想把不同告警发到不同的飞书群，就在下面对应的分类后面填上该群的 webhook，不填的发到上面的默认 webhook。ServiceHealth = M1 服务健康，Flash = M2 VM 平台事件，ResourceHealth = M3 资源健康，Metric = M4 指标，Quota = M5 配额，ScheduledEvent = M6 计划事件，ActivityFailure = M7 操作失败，AKS = M8 AKS，SelfMonitor = 告警系统自检。点击查看完整说明和示例。",
+              "uri": "https://github.com/linkinchow/azure-alert#多个飞书群按分类路由"
+            }
+          },
+          {
             "name": "webhookOverrides",
             "type": "Microsoft.Common.TextBox",
-            "label": "按分类路由（可选，JSON）",
-            "toolTip": "一类一群：{\"Flash.HostFailure\": \"https://...\", \"ServiceHealth\": \"https://...\"}。按完整分类、分类前缀、default 的顺序匹配。",
-            "defaultValue": "{}",
+            "label": "按分类路由（可选）",
+            "toolTip": "留空的分类发到默认 webhook。要把某个小类单独发到一个群，可以再加一行，例如 \"Flash.HostFailure\": \"https://...\"；完整分类名优先于模块前缀。[完整说明和示例](https://github.com/linkinchow/azure-alert#多个飞书群按分类路由)",
+            "defaultValue": "{\n  \"ServiceHealth\": \"\",\n  \"Flash\": \"\",\n  \"ResourceHealth\": \"\",\n  \"Metric\": \"\",\n  \"Quota\": \"\",\n  \"ScheduledEvent\": \"\",\n  \"ActivityFailure\": \"\",\n  \"AKS\": \"\",\n  \"SelfMonitor\": \"\"\n}",
             "multiLine": true,
             "constraints": {
               "required": true,
               "regex": "^\\s*\\{[\\s\\S]*\\}\\s*$",
-              "validationMessage": "请输入 JSON 对象，例如 {} 或 {\"Flash.HostFailure\": \"https://...\"}"
+              "validationMessage": "请输入 JSON 对象：键用英文双引号，最后一项后面不要加逗号"
             }
           }
         ]

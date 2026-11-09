@@ -30,7 +30,7 @@ param modules object = {
 }
 
 @secure()
-@description('Feishu webhook per category. Keys: full category (e.g. Flash.HostFailure), category prefix (e.g. ServiceHealth) or default.')
+@description('Feishu webhook per category. Keys: full category (e.g. Flash.HostFailure), category prefix (e.g. ServiceHealth) or default. Entries with an empty value are ignored, so a template with every category can be left partly blank.')
 param webhooks object = {}
 
 @secure()
@@ -123,7 +123,8 @@ module core 'modules/core/main.bicep' = {
     prefix: prefix
     location: location
     tags: tags
-    webhooks: empty(defaultWebhook) ? webhooks : union(webhooks, { default: defaultWebhook })
+    // Drop blank entries (the portal wizard pre-fills every module with ""), so those categories fall back to default.
+    webhooks: union(toObject(filter(items(webhooks), w => !empty(w.value)), w => w.key, w => w.value), empty(defaultWebhook) ? {} : { default: defaultWebhook })
     alertCategoryMap: alertCategoryMap
     sinkEnabled: sinkEnabled
     sinkWorkspaceResourceId: sinkWorkspaceResourceId

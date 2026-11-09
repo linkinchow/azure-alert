@@ -347,8 +347,10 @@
 
 用法：在部署参数 `webhooks` 中配置每个 category 对应的群。key 可以写：
 - **完整 category**，只路由这一类；
-- **前缀**（`Flash`、`ServiceHealth`、`Metric`、`Quota`、`ActivityFailure`、`AKS`、`Alert`），路由这个前缀下的所有子类；
+- **前缀**（`ServiceHealth`、`Flash`、`ResourceHealth`、`Metric`、`Quota`、`ScheduledEvent`、`ActivityFailure`、`AKS`、`SelfMonitor`、`LogAlert`、`Alert`），路由这个前缀下的所有子类；
 - `default`，兜底。
+
+值为空的项会被忽略。完整的填写示例和路由结果见 [README 的"多个飞书群（按分类路由）"](../README.md#多个飞书群按分类路由)。
 
 `ResourceHealth`、`SelfMonitor`、`LogAlert` 没有点号，前缀就是它自己。
 

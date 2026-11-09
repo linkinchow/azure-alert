@@ -306,7 +306,7 @@ Flash 的分类和级别由 `modules/m2-flash/rules.json` 按 annotationName 决
 
 ## 6. 部署向导 ui/createUiDefinition.json
 
-2026-11-03 起，"告警模块"是一个多选下拉框（默认全选），"首次运行静默""写入 Log Analytics"是"是 / 否"单选，以便在审阅页显示。
+由 `scripts/zh_wizard_texts.py` 从向导文件生成。"告警模块"是多选下拉框（默认全选），"首次运行静默""写入 Log Analytics"是"是 / 否"单选，以便在审阅页显示；"按分类路由"预填了各模块的分类前缀（值为空，留空的发到默认 webhook）。
 
 | 行 | 类型 | 文字 |
 |---|---|---|
@@ -343,32 +343,33 @@ Flash 的分类和级别由 `modules/m2-flash/rules.json` 按 annotationName 决
 | 139 | label | 再次输入默认飞书 webhook（不显示） |
 | 144 | 校验提示 | 请输入飞书 / Lark 自定义机器人 webhook |
 | 149 | tooltip | 飞书群自定义机器人的 webhook 地址。没有在"按分类路由"里单独指定的告警都发到这里。 |
-| 154 | label | 按分类路由（可选，JSON） |
-| 155 | tooltip | 一类一群：{"Flash.HostFailure": "https://...", "ServiceHealth": "https://..."}。按完整分类、分类前缀、default 的顺序匹配。 |
-| 161 | 校验提示 | 请输入 JSON 对象，例如 {} 或 {"Flash.HostFailure": "https://..."} |
-| 181 | label | ARG 读取权限（Reader）授予方式 |
-| 182 | 选项 | 按订阅授予 |
-| 190 | 选项 | 不授予（部署后用 scripts/grant-reader-mg.sh 在管理组上授予） |
-| 195 | tooltip | Pull 模块（M1 / M2 / M5 / M6 / M8）需要对被监控的订阅有 Reader 权限。按订阅授予会在每个选中的订阅上授予；也可以部署后在管理组上统一授予。 |
-| 200 | label | 要告警的订阅（Pull 模块读取范围，授予 Reader） |
-| 209 | tooltip | 这些订阅会给告警托管身份授予 Reader，Pull 模块只读取这些订阅。 |
-| 214 | label | 排除的订阅（可选） |
-| 223 | tooltip | 在管理组上授权时，管理组下不想告警的订阅。 |
-| 228 | label | 部署 M3 / M4 / M7 告警规则的订阅 |
-| 237 | tooltip | M3 / M4 / M7 的告警规则会建在这些订阅里，监控整个订阅。 |
-| 242 | label | M4 metric 规则的区域（逗号分隔，例如 eastus2,westus3） |
-| 247 | 校验提示 | 区域名用逗号分隔，例如 eastus2,westus3 |
-| 249 | tooltip | M4 指标规则按区域创建，多个区域用逗号分隔，例如 eastus2,westus3。 |
-| 254 | label | M4 CPU 告警阈值（%，5 分钟平均） |
-| 256 | tooltip | 平台 CPU 指标在部分规格上到不了 100%（实测 D2s_v5 最高 83.3%），建议 80。 |
-| 260 | 校验提示 | 1-100 的整数 |
-| 266 | label | M4 数据盘带宽使用率告警阈值（%，5 分钟平均） |
-| 277 | label | 首次运行静默（不推送历史事件） |
-| 278 | 选项 | 是 |
-| 279 | tooltip | 建议勾选：首次运行只记录当前已有的事件，不把历史事件一次性推进群。 |
-| 287 | 选项 | 否 |
-| 297 | label | 事件落地到 Log Analytics 自定义表 AzureAlertEvents_CL |
-| 299 | tooltip | 把标准事件同时写入 Log Analytics 自定义表 AzureAlertEvents_CL，便于以后统计和分析。会新建一个工作区。 |
+| 157 | 说明框 | 想把不同告警发到不同的飞书群，就在下面对应的分类后面填上该群的 webhook，不填的发到上面的默认 webhook。ServiceHealth = M1 服务健康，Flash = M2 VM 平台事件，ResourceHealth = M3 资源健康，Metric = M4 指标，Quota = M5 配额，ScheduledEvent = M6 计划事件，ActivityFailure = M7 操作失败，AKS = M8 AKS，SelfMonitor = 告警系统自检。点击查看完整说明和示例。 |
+| 164 | label | 按分类路由（可选） |
+| 165 | tooltip | 留空的分类发到默认 webhook。要把某个小类单独发到一个群，可以再加一行，例如 "Flash.HostFailure": "https://..."；完整分类名优先于模块前缀。[完整说明和示例](https://github.com/linkinchow/azure-alert#多个飞书群按分类路由) |
+| 171 | 校验提示 | 请输入 JSON 对象：键用英文双引号，最后一项后面不要加逗号 |
+| 191 | label | ARG 读取权限（Reader）授予方式 |
+| 192 | 选项 | 按订阅授予 |
+| 200 | 选项 | 不授予（部署后用 scripts/grant-reader-mg.sh 在管理组上授予） |
+| 205 | tooltip | Pull 模块（M1 / M2 / M5 / M6 / M8）需要对被监控的订阅有 Reader 权限。按订阅授予会在每个选中的订阅上授予；也可以部署后在管理组上统一授予。 |
+| 210 | label | 要告警的订阅（Pull 模块读取范围，授予 Reader） |
+| 219 | tooltip | 这些订阅会给告警托管身份授予 Reader，Pull 模块只读取这些订阅。 |
+| 224 | label | 排除的订阅（可选） |
+| 233 | tooltip | 在管理组上授权时，管理组下不想告警的订阅。 |
+| 238 | label | 部署 M3 / M4 / M7 告警规则的订阅 |
+| 247 | tooltip | M3 / M4 / M7 的告警规则会建在这些订阅里，监控整个订阅。 |
+| 252 | label | M4 metric 规则的区域（逗号分隔，例如 eastus2,westus3） |
+| 257 | 校验提示 | 区域名用逗号分隔，例如 eastus2,westus3 |
+| 259 | tooltip | M4 指标规则按区域创建，多个区域用逗号分隔，例如 eastus2,westus3。 |
+| 264 | label | M4 CPU 告警阈值（%，5 分钟平均） |
+| 266 | tooltip | 平台 CPU 指标在部分规格上到不了 100%（实测 D2s_v5 最高 83.3%），建议 80。 |
+| 270 | 校验提示 | 1-100 的整数 |
+| 276 | label | M4 数据盘带宽使用率告警阈值（%，5 分钟平均） |
+| 287 | label | 首次运行静默（不推送历史事件） |
+| 288 | 选项 | 是 |
+| 289 | tooltip | 建议勾选：首次运行只记录当前已有的事件，不把历史事件一次性推进群。 |
+| 297 | 选项 | 否 |
+| 307 | label | 事件落地到 Log Analytics 自定义表 AzureAlertEvents_CL |
+| 309 | tooltip | 把标准事件同时写入 Log Analytics 自定义表 AzureAlertEvents_CL，便于以后统计和分析。会新建一个工作区。 |
 
 ---
 

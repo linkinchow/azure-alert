@@ -43,10 +43,6 @@ param activityFailureLevels array = [
 @description('M7: optional operation filter; empty = every operation.')
 param activityFailureOperations array = []
 
-var activityLevelItems = [for l in activityFailureLevels: {
-  field: 'level'
-  equals: l
-}]
 var activityOperationItems = [for op in activityFailureOperations: {
   field: 'operationName'
   equals: op
@@ -111,8 +107,10 @@ resource activityFailure 'Microsoft.Insights/activityLogAlerts@2020-10-01' = if 
           field: 'category'
           equals: 'Administrative'
         }
+        // containsAny, not anyOf: Azure rejects a subscription-scoped Administrative rule whose only extra filter is an anyOf (UnsupportedCondition).
         {
-          anyOf: activityLevelItems
+          field: 'level'
+          containsAny: activityFailureLevels
         }
       ], empty(activityFailureOperations) ? [] : [
         {
