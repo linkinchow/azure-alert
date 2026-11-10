@@ -341,15 +341,23 @@
       {
         "name": "keyvault",
         "label": "Key Vault（M9）",
-        "visible": "[contains(steps('modules').modules, 'keyVaultExpiry')]",
         "elements": [
+          {
+            "name": "kvOff",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": "[not(contains(steps('modules').modules, 'keyVaultExpiry'))]",
+            "options": {
+              "style": "Info",
+              "text": "没有勾选 M9 Key Vault 到期提醒，这一步不需要填写，直接点\"下一步\"。"
+            }
+          },
           {
             "name": "kvInfo",
             "type": "Microsoft.Common.InfoBox",
-            "visible": true,
+            "visible": "[contains(steps('modules').modules, 'keyVaultExpiry')]",
             "options": {
               "style": "Info",
-              "text": "选择要接入到期提醒的现有 Key Vault。部署时会在每个选中的 Key Vault 上建一个事件订阅（<前缀>-kv-expiry），Event Grid 会在 Key Vault 所在资源组自动创建或复用它的系统主题，不改动 Key Vault 本身。部署人需要对这些资源组有 Event Grid 写权限（EventGrid Contributor 或 Contributor），没有权限的请不要勾选。以后新建的 Key Vault 用脚本或门户接入，点击查看说明。",
+              "text": "选择要接入到期提醒的现有 Key Vault（列出当前账号能看到的所有订阅里的 Key Vault）。部署时会在每个选中的 Key Vault 上建一个事件订阅（<前缀>-kv-expiry），Event Grid 会在 Key Vault 所在资源组自动创建或复用它的系统主题，不改动 Key Vault 本身。部署人需要对这些资源组有 Event Grid 写权限（EventGrid Contributor 或 Contributor），没有权限的请不要勾选。以后新建的 Key Vault 用脚本或门户接入，点击查看说明。",
               "uri": "https://github.com/linkinchow/azure-alert/blob/main/docs/keyvault-expiry.md"
             }
           },
@@ -360,7 +368,6 @@
               "method": "POST",
               "path": "providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01",
               "body": {
-                "subscriptions": "[if(equals(steps('scope').readerScope, 'subscription'), steps('scope').readerSubscriptionIds, map(steps('scope').subscriptionsApi.value, (i) => i.subscriptionId))]",
                 "query": "resources | where type =~ 'microsoft.keyvault/vaults' | project id, name, resourceGroup, subscriptionId | order by name asc",
                 "options": {
                   "$top": 1000
@@ -376,12 +383,12 @@
             "selectAll": true,
             "filter": true,
             "multiLine": true,
-            "toolTip": "列出\"范围与权限\"中所选订阅里的 Key Vault（最多 1000 个）。可以点\"全选\"。",
+            "toolTip": "列出当前账号能看到的所有订阅里的 Key Vault（最多 1000 个），每项下方显示资源组和订阅 ID。可以搜索，也可以全选。",
             "constraints": {
               "allowedValues": "[map(steps('keyvault').kvApi.data, (i) => parse(concat('{\"label\":\"', i.name, '\",\"description\":\"', i.resourceGroup, ' / ', i.subscriptionId, '\",\"value\":\"', i.id, '\"}')))]",
               "required": false
             },
-            "visible": true
+            "visible": "[contains(steps('modules').modules, 'keyVaultExpiry')]"
           }
         ]
       }
