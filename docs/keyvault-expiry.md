@@ -33,6 +33,10 @@ Key Vault 会通过 Azure Event Grid 发出到期事件。在每个 Key Vault �
 
 ## 接入方式
 
+> **先升级 Router**：2026-11 之前部署的告警系统，Router 还不认识 Key Vault 事件。直接接入的话，事件推过去时 Router 会运行失败（会触发"告警系统自检"告警），卡片发不出来。
+> 请先用最新模板**重新部署一次**告警系统，见 README 的[添加、升级或删除模块](../README.md#添加升级或删除模块)：门户再点一次 Deploy to Azure，或者命令行用 `scripts/export-params.py` 导出上次的参数后重新部署。这次部署里可以顺便勾选 M9 接入 Key Vault，也可以不勾，之后用脚本接入。
+> 下面的脚本会自动检查：Router 是旧版时只提示升级，不会接入。门户和 CLI 方式没有这个检查，请自己确认已经升级。
+
 | 情况 | 方式 |
 |---|---|
 | 部署时已有的 Key Vault | 部署向导勾选 **M9 Key Vault 到期提醒**，在"Key Vault（M9）"一步选择要接入的 Key Vault；命令行部署用参数 `keyVaultIds`（见下文） |
@@ -60,6 +64,7 @@ python scripts/kv-expiry-subscribe.py --prefix aa --resource-group rg-azure-aler
 - `--prefix`、`--resource-group`：部署告警系统时用的前缀和中心资源组，脚本用它们找到 Router。Router 不在当前订阅时，加 `--router-subscription <订阅 ID>`。
 - `--subscriptions <订阅 ID> ...`：只扫描这些订阅，默认扫描当前账号能看到的所有订阅。
 - 可以定期运行（比如每月一次），把新建的 Key Vault 接进来；已经接入的会跳过。
+- 脚本会先检查 Router 是否支持 Key Vault 事件：是旧版时，列出模式下给出警告，`--apply` 会直接退出、不做任何改动。
 
 ### 方式二：Azure 门户
 

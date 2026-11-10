@@ -224,7 +224,7 @@ az deployment sub create -l eastus2 -n azure-alert -f main.bicep -p @deploy.loca
 
 - 部署是增量的：已有资源就地更新，不会重建，也不会重复创建。
 - Pull 模块的去重记录保存在它自己的运行历史里，重新部署不会丢，不会把旧事件再推一遍。"首次运行静默"只对新加的模块生效。
-- 新模块有时需要新版本的 Router 配合；勾选全部模块重新部署，会把已有模块和 Router 一起升级到最新版本。
+- 新模块有时需要新版本的 Router 配合；勾选全部模块重新部署，会把已有模块和 Router 一起升级到最新版本。例如 M9 需要新版 Router 才能处理 Key Vault 事件：M9 之前部署的系统，要先重新部署一次再接入 Key Vault（[docs/keyvault-expiry.md](docs/keyvault-expiry.md)）。
 
 **方式一：门户（Deploy to Azure）**
 

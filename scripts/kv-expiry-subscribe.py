@@ -13,6 +13,8 @@ What --apply does for each vault: creates the Event Grid subscription <prefix>-k
 certificate / secret / key NearExpiry and Expired events to the Router's callback URL. Event Grid creates the vault's
 system topic in the vault's resource group, or reuses the existing one (a vault can only have one). Nothing on the vault
 itself changes. Needs Event Grid write access on the vault's resource group (EventGrid Contributor or Contributor).
+The Router must be a version with M9 support: a Router deployed before M9 is detected and --apply refuses to connect
+until it is upgraded by redeploying azure-alert with the latest template.
 Run it again from time to time to connect Key Vaults created later.
 """
 import argparse
@@ -71,15 +73,43 @@ def connected(vault_id):
     return r.returncode == 0
 
 
-def router_url():
+def router_id():
     sub = args.router_subscription or json.loads(az(['account', 'show', '-o', 'json']).stdout)['id']
-    rid = f'/subscriptions/{sub}/resourceGroups/{args.resource_group}/providers/Microsoft.Logic/workflows/{args.prefix}-router'
+    return f'/subscriptions/{sub}/resourceGroups/{args.resource_group}/providers/Microsoft.Logic/workflows/{args.prefix}-router'
+
+
+def router_supports_keyvault(rid):
+    """True / False, or None when the Router cannot be read. A Router deployed before M9 has no Keyvault_events step
+    and fails on Event Grid events, so it must be upgraded (redeploy with the latest template) before connecting."""
+    r = az(['rest', '--method', 'get', '--url', f'https://management.azure.com{rid}?api-version=2019-05-01', '-o', 'json'], check=False)
+    if r.returncode != 0:
+        return None
+    return 'Keyvault_events' in json.dumps(json.loads(r.stdout).get('properties', {}).get('definition', {}))
+
+
+def router_url(rid):
     r = az(['rest', '--method', 'post', '--url', f'https://management.azure.com{rid}/triggers/manual/listCallbackUrl?api-version=2019-05-01',
             '--query', 'value', '-o', 'tsv'], check=False)
     if r.returncode != 0:
         sys.exit(f'Cannot get the callback URL of {rid}. Check --prefix / --resource-group / --router-subscription.\n{r.stderr.strip()[-300:]}')
     return r.stdout.strip()
 
+
+UPGRADE = ('The Router {rid} was deployed before M9 and cannot handle Key Vault events.\n'
+           'Upgrade it first: redeploy azure-alert with the latest template (portal "Deploy to Azure", or the CLI with the\n'
+           'parameter file from scripts/export-params.py). M9 can stay unticked in that deployment. Then run this script again.')
+
+if not args.remove:
+    rid = router_id()
+    ok = router_supports_keyvault(rid)
+    if ok is None:
+        print(f'WARNING: cannot read the Router {rid}. Check --prefix / --resource-group / --router-subscription.')
+    elif ok:
+        print(f'Router {rid}: supports Key Vault events')
+    elif args.apply:
+        sys.exit(UPGRADE.format(rid=rid))
+    else:
+        print('WARNING: ' + UPGRADE.format(rid=rid) + '\n')
 
 rows = vaults()
 print(f'{len(rows)} Key Vault(s); subscription name on each vault: {NAME}')
@@ -98,7 +128,7 @@ if not args.apply:
     print(f'(list only - nothing was changed; add --apply to {action} {len(todo)} Key Vault(s))')
     sys.exit(0)
 
-url = None if args.remove else router_url()
+url = None if args.remove else router_url(rid)
 failed = 0
 for r in todo:
     if args.remove:
