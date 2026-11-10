@@ -248,32 +248,35 @@ az deployment sub create -l eastus2 -n azure-alert -f main.bicep -p @deploy.loca
 
 - **资源组名称或前缀和第一次不同，会再部署出一整套告警系统**，同一事件会收到两张卡片。
 - 只勾选新模块也能部署成功（没勾的模块保持原样），但已有模块不会升级；建议始终勾选全部需要的模块。
-- **取消勾选不会删除已部署的模块**，需要手动删除，见下表。
+- **取消勾选不会删除已部署的模块**，要用删除脚本，见下面。
 
-**删除模块**（`<前缀>` 默认 `aa`，`<资源组>` 默认 `rg-azure-alert`；M3 / M4 / M7 的规则在每个推送订阅的同名资源组里，每个订阅都要删）：
+**删除模块**：重新部署时取消勾选不会删除模块（订阅级部署只支持增量模式），要用删除脚本：
 
-| 模块 | 要删除的资源 |
+```bash
+# 先列出要删除的资源（不做任何改动）
+python scripts/remove-module.py --prefix aa --resource-group rg-azure-alert --module m5
+
+# 确认无误后删除；可以一次删多个模块
+python scripts/remove-module.py --prefix aa --resource-group rg-azure-alert --module m5 --module m7 --apply
+```
+
+- 脚本用 Resource Graph 在当前账号能看到的所有订阅里查找：名称以 `<前缀>-m<编号>-` 开头、类型是 Logic App / 指标告警 / 活动日志告警、并且在中心资源组或推送资源组里的资源。M3 / M4 / M7 在每个推送订阅里的规则会一起找到。
+- 推送资源组如果和中心资源组名称不同，加 `--push-resource-group <名称>`。
+- 删除 Pull 模块（M1 / M2 / M5 / M6 / M8）会同时删掉它的去重记录；以后再加回来时，"首次运行静默"会让前 30 分钟只记录不推送，不会把历史事件推进群。
+- 刚删完马上再运行列出命令，可能还会看到已删除的资源，这是 Resource Graph 的索引延迟（通常一分钟内），不影响。
+
+各模块对应的资源（供手动核对）：
+
+| 模块 | 资源 |
 |---|---|
 | M1 | Logic App `<前缀>-m1-service-health`，指标告警 `<前缀>-m1-service-health-runs-failed` |
 | M2 | Logic App `<前缀>-m2-flash-vm`、`<前缀>-m2-flash-vmss`，以及各自的 `-runs-failed` 指标告警 |
-| M3 | 活动日志告警 `<前缀>-m3-resource-health` |
-| M4 | 指标告警 `<前缀>-m4-vm-cpu-<区域>`、`<前缀>-m4-vm-datadisk-bw-<区域>`（每个区域各一对） |
+| M3 | 活动日志告警 `<前缀>-m3-resource-health`（每个推送订阅一条） |
+| M4 | 指标告警 `<前缀>-m4-vm-cpu-<区域>`、`<前缀>-m4-vm-datadisk-bw-<区域>`（每个推送订阅、每个区域各一对） |
 | M5 | Logic App `<前缀>-m5-quota`，指标告警 `<前缀>-m5-quota-runs-failed` |
 | M6 | Logic App `<前缀>-m6-scheduled-events`，指标告警 `<前缀>-m6-scheduled-events-runs-failed` |
-| M7 | 活动日志告警 `<前缀>-m7-activity-failure` |
+| M7 | 活动日志告警 `<前缀>-m7-activity-failure`（每个推送订阅一条） |
 | M8 | Logic App `<前缀>-m8-aks`，指标告警 `<前缀>-m8-aks-runs-failed` |
-
-```bash
-# 先列出某个模块的资源（例如 M5），确认无误再删除
-az resource list -g rg-azure-alert --query "[?starts_with(name,'aa-m5-')].{name:name,type:type}" -o table
-
-# Logic App
-az resource delete -g rg-azure-alert -n aa-m5-quota --resource-type Microsoft.Logic/workflows
-# 指标告警（自检告警、M4）
-az monitor metrics alert delete -g rg-azure-alert -n aa-m5-quota-runs-failed
-# 活动日志告警（M3、M7）
-az monitor activity-log alert delete -g rg-azure-alert -n aa-m7-activity-failure
-```
 
 删除后再部署时，把对应模块设为 `false`（门户里不勾），就不会再建出来。
 
