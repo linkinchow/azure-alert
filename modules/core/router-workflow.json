@@ -47,12 +47,16 @@
   "actions": {
     "Is_alert": {
       "type": "Compose",
-      "inputs": "@equals(triggerBody()?['schemaId'], 'azureMonitorCommonAlertSchema')",
-      "runAfter": {}
+      "inputs": "@equals(outputs('Body_obj')?['schemaId'], 'azureMonitorCommonAlertSchema')",
+      "runAfter": {
+        "Eventgrid_events": [
+          "Succeeded"
+        ]
+      }
     },
     "Alert_target": {
       "type": "Compose",
-      "inputs": "@if(empty(triggerBody()?['data']?['essentials']?['alertTargetIDs']), '', first(triggerBody()?['data']?['essentials']?['alertTargetIDs']))",
+      "inputs": "@if(empty(outputs('Body_obj')?['data']?['essentials']?['alertTargetIDs']), '', first(outputs('Body_obj')?['data']?['essentials']?['alertTargetIDs']))",
       "runAfter": {
         "Is_alert": [
           "Succeeded"
@@ -70,7 +74,7 @@
     },
     "Status_text": {
       "type": "Compose",
-      "inputs": "@{string(coalesce(triggerBody()?['data']?['alertContext']?['properties']?['statusMessage'], ''))}",
+      "inputs": "@{string(coalesce(outputs('Body_obj')?['data']?['alertContext']?['properties']?['statusMessage'], ''))}",
       "runAfter": {
         "Alert_target_parts": [
           "Succeeded"
@@ -138,7 +142,7 @@
     },
     "Alert_category": {
       "type": "Compose",
-      "inputs": "@coalesce(parameters('alertCategoryMap')?[coalesce(triggerBody()?['data']?['essentials']?['alertRule'], '-')], if(endsWith(coalesce(triggerBody()?['data']?['essentials']?['alertRule'], ''), '-runs-failed'), 'SelfMonitor', null), parameters('alertCategoryMap')?[concat('svc:', coalesce(triggerBody()?['data']?['essentials']?['monitoringService'], '-'))], 'Alert.Other')",
+      "inputs": "@coalesce(parameters('alertCategoryMap')?[coalesce(outputs('Body_obj')?['data']?['essentials']?['alertRule'], '-')], if(endsWith(coalesce(outputs('Body_obj')?['data']?['essentials']?['alertRule'], ''), '-runs-failed'), 'SelfMonitor', null), parameters('alertCategoryMap')?[concat('svc:', coalesce(outputs('Body_obj')?['data']?['essentials']?['monitoringService'], '-'))], 'Alert.Other')",
       "runAfter": {
         "Activity_class": [
           "Succeeded"
@@ -147,7 +151,7 @@
     },
     "Alert_summary": {
       "type": "Compose",
-      "inputs": "@{if(not(empty(triggerBody()?['data']?['alertContext']?['condition']?['allOf'])), concat(outputs('Metric_name_cn'), ' 当前 ', outputs('Metric_value'), '，触发条件 ', outputs('Metric_condition'), '。'), if(not(empty(triggerBody()?['data']?['alertContext']?['properties']?['currentHealthStatus'])), string(coalesce(triggerBody()?['data']?['alertContext']?['properties']?['details'], triggerBody()?['data']?['alertContext']?['properties']?['title'], '')), if(not(empty(triggerBody()?['data']?['alertContext']?['operationName'])), if(empty(variables('detail')), take(outputs('Status_text'), 1500), variables('detail')), string(coalesce(triggerBody()?['data']?['essentials']?['description'], '')))))}",
+      "inputs": "@{if(not(empty(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'])), concat(outputs('Metric_name_cn'), ' 当前 ', outputs('Metric_value'), '，触发条件 ', outputs('Metric_condition'), '。'), if(not(empty(outputs('Body_obj')?['data']?['alertContext']?['properties']?['currentHealthStatus'])), string(coalesce(outputs('Body_obj')?['data']?['alertContext']?['properties']?['details'], outputs('Body_obj')?['data']?['alertContext']?['properties']?['title'], '')), if(not(empty(outputs('Body_obj')?['data']?['alertContext']?['operationName'])), if(empty(variables('detail')), take(outputs('Status_text'), 1500), variables('detail')), string(coalesce(outputs('Body_obj')?['data']?['essentials']?['description'], '')))))}",
       "runAfter": {
         "Operation_cn": [
           "Succeeded"
@@ -158,20 +162,20 @@
       "type": "Compose",
       "inputs": {
         "schemaVersion": "1.0",
-        "eventId": "@{concat('alert:', triggerBody()?['data']?['essentials']?['alertId'], ':', triggerBody()?['data']?['essentials']?['monitorCondition'])}",
+        "eventId": "@{concat('alert:', outputs('Body_obj')?['data']?['essentials']?['alertId'], ':', outputs('Body_obj')?['data']?['essentials']?['monitorCondition'])}",
         "source": {
-          "module": "@{concat('Push-', coalesce(triggerBody()?['data']?['essentials']?['monitoringService'], 'AzureMonitor'))}",
+          "module": "@{concat('Push-', coalesce(outputs('Body_obj')?['data']?['essentials']?['monitoringService'], 'AzureMonitor'))}",
           "channel": "ActionGroup",
-          "rawId": "@{triggerBody()?['data']?['essentials']?['alertId']}"
+          "rawId": "@{outputs('Body_obj')?['data']?['essentials']?['alertId']}"
         },
         "category": "@{if(equals(outputs('Alert_category'), 'ActivityFailure'), concat('ActivityFailure.', outputs('Activity_class')), outputs('Alert_category'))}",
-        "severity": "@{if(equals(outputs('Alert_category'), 'ActivityFailure'), if(contains(createArray('Capacity', 'Quota'), outputs('Activity_class')), 'Warning', if(equals(triggerBody()?['data']?['alertContext']?['level'], 'Critical'), 'Critical', if(equals(triggerBody()?['data']?['alertContext']?['level'], 'Error'), 'Warning', 'Informational'))), if(equals(outputs('Alert_category'), 'ResourceHealth'), if(contains(createArray('Critical', 'Error'), triggerBody()?['data']?['alertContext']?['level']), 'Critical', if(equals(triggerBody()?['data']?['alertContext']?['level'], 'Warning'), 'Warning', 'Informational')), if(contains(createArray('Sev0', 'Sev1'), triggerBody()?['data']?['essentials']?['severity']), 'Critical', if(equals(triggerBody()?['data']?['essentials']?['severity'], 'Sev2'), 'Warning', 'Informational'))))}",
-        "status": "@{if(equals(triggerBody()?['data']?['essentials']?['monitorCondition'], 'Resolved'), 'Resolved', 'New')}",
-        "initiator": "@{if(equals(triggerBody()?['data']?['alertContext']?['properties']?['cause'], 'PlatformInitiated'), 'Platform', if(equals(triggerBody()?['data']?['alertContext']?['properties']?['cause'], 'UserInitiated'), 'Customer', 'Unknown'))}",
-        "title": "@{if(not(empty(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName'])), concat(outputs('Alert_target_parts')[8], ' ', outputs('Metric_name_cn'), ' ', outputs('Metric_value'), if(contains(string(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName']), 'Percentage'), '%', '')), if(not(empty(triggerBody()?['data']?['alertContext']?['properties']?['currentHealthStatus'])), concat(outputs('Alert_target_parts')[8], '：', coalesce(triggerBody()?['data']?['alertContext']?['properties']?['title'], triggerBody()?['data']?['alertContext']?['properties']?['currentHealthStatus'])), if(equals(outputs('Alert_category'), 'ActivityFailure'), concat(outputs('Alert_target_parts')[8], '：', outputs('Operation_cn'), ' 失败'), concat(coalesce(triggerBody()?['data']?['essentials']?['alertRule'], 'Azure Monitor 告警'), if(empty(outputs('Alert_target_parts')[8]), '', concat('：', outputs('Alert_target_parts')[8]))))))}",
+        "severity": "@{if(equals(outputs('Alert_category'), 'ActivityFailure'), if(contains(createArray('Capacity', 'Quota'), outputs('Activity_class')), 'Warning', if(equals(outputs('Body_obj')?['data']?['alertContext']?['level'], 'Critical'), 'Critical', if(equals(outputs('Body_obj')?['data']?['alertContext']?['level'], 'Error'), 'Warning', 'Informational'))), if(equals(outputs('Alert_category'), 'ResourceHealth'), if(contains(createArray('Critical', 'Error'), outputs('Body_obj')?['data']?['alertContext']?['level']), 'Critical', if(equals(outputs('Body_obj')?['data']?['alertContext']?['level'], 'Warning'), 'Warning', 'Informational')), if(contains(createArray('Sev0', 'Sev1'), outputs('Body_obj')?['data']?['essentials']?['severity']), 'Critical', if(equals(outputs('Body_obj')?['data']?['essentials']?['severity'], 'Sev2'), 'Warning', 'Informational'))))}",
+        "status": "@{if(equals(outputs('Body_obj')?['data']?['essentials']?['monitorCondition'], 'Resolved'), 'Resolved', 'New')}",
+        "initiator": "@{if(equals(outputs('Body_obj')?['data']?['alertContext']?['properties']?['cause'], 'PlatformInitiated'), 'Platform', if(equals(outputs('Body_obj')?['data']?['alertContext']?['properties']?['cause'], 'UserInitiated'), 'Customer', 'Unknown'))}",
+        "title": "@{if(not(empty(first(coalesce(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName'])), concat(outputs('Alert_target_parts')[8], ' ', outputs('Metric_name_cn'), ' ', outputs('Metric_value'), if(contains(string(first(coalesce(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName']), 'Percentage'), '%', '')), if(not(empty(outputs('Body_obj')?['data']?['alertContext']?['properties']?['currentHealthStatus'])), concat(outputs('Alert_target_parts')[8], '：', coalesce(outputs('Body_obj')?['data']?['alertContext']?['properties']?['title'], outputs('Body_obj')?['data']?['alertContext']?['properties']?['currentHealthStatus'])), if(equals(outputs('Alert_category'), 'ActivityFailure'), concat(outputs('Alert_target_parts')[8], '：', outputs('Operation_cn'), ' 失败'), concat(coalesce(outputs('Body_obj')?['data']?['essentials']?['alertRule'], 'Azure Monitor 告警'), if(empty(outputs('Alert_target_parts')[8]), '', concat('：', outputs('Alert_target_parts')[8]))))))}",
         "summary": "@{outputs('Alert_summary')}",
         "time": {
-          "eventTime": "@{if(equals(triggerBody()?['data']?['essentials']?['monitorCondition'], 'Resolved'), coalesce(triggerBody()?['data']?['essentials']?['resolvedDateTime'], triggerBody()?['data']?['essentials']?['firedDateTime']), triggerBody()?['data']?['essentials']?['firedDateTime'])}",
+          "eventTime": "@{if(equals(outputs('Body_obj')?['data']?['essentials']?['monitorCondition'], 'Resolved'), coalesce(outputs('Body_obj')?['data']?['essentials']?['resolvedDateTime'], outputs('Body_obj')?['data']?['essentials']?['firedDateTime']), outputs('Body_obj')?['data']?['essentials']?['firedDateTime'])}",
           "detectedTime": "@{utcNow()}"
         },
         "resource": {
@@ -182,10 +186,10 @@
           "resourceGroup": "@{outputs('Alert_target_parts')[4]}"
         },
         "details": {
-          "alertRule": "@{triggerBody()?['data']?['essentials']?['alertRule']}",
-          "signalType": "@{triggerBody()?['data']?['essentials']?['signalType']}",
-          "monitoringService": "@{triggerBody()?['data']?['essentials']?['monitoringService']}",
-          "alertContext": "@triggerBody()?['data']?['alertContext']"
+          "alertRule": "@{outputs('Body_obj')?['data']?['essentials']?['alertRule']}",
+          "signalType": "@{outputs('Body_obj')?['data']?['essentials']?['signalType']}",
+          "monitoringService": "@{outputs('Body_obj')?['data']?['essentials']?['monitoringService']}",
+          "alertContext": "@outputs('Body_obj')?['data']?['alertContext']"
         },
         "display": [
           {
@@ -202,15 +206,15 @@
           },
           {
             "k": "健康状态",
-            "v": "@{if(empty(triggerBody()?['data']?['alertContext']?['properties']?['currentHealthStatus']), '', concat(coalesce(outputs('Health_cn')?[coalesce(triggerBody()?['data']?['alertContext']?['properties']?['previousHealthStatus'], '-')], triggerBody()?['data']?['alertContext']?['properties']?['previousHealthStatus'], '?'), ' → ', coalesce(outputs('Health_cn')?[triggerBody()?['data']?['alertContext']?['properties']?['currentHealthStatus']], triggerBody()?['data']?['alertContext']?['properties']?['currentHealthStatus'])))}"
+            "v": "@{if(empty(outputs('Body_obj')?['data']?['alertContext']?['properties']?['currentHealthStatus']), '', concat(coalesce(outputs('Health_cn')?[coalesce(outputs('Body_obj')?['data']?['alertContext']?['properties']?['previousHealthStatus'], '-')], outputs('Body_obj')?['data']?['alertContext']?['properties']?['previousHealthStatus'], '?'), ' → ', coalesce(outputs('Health_cn')?[outputs('Body_obj')?['data']?['alertContext']?['properties']?['currentHealthStatus']], outputs('Body_obj')?['data']?['alertContext']?['properties']?['currentHealthStatus'])))}"
           },
           {
             "k": "发起方",
-            "v": "@{coalesce(outputs('Health_cn')?[coalesce(triggerBody()?['data']?['alertContext']?['properties']?['cause'], '-')], '')}"
+            "v": "@{coalesce(outputs('Health_cn')?[coalesce(outputs('Body_obj')?['data']?['alertContext']?['properties']?['cause'], '-')], '')}"
           },
           {
             "k": "操作",
-            "v": "@{if(equals(outputs('Alert_category'), 'ActivityFailure'), coalesce(triggerBody()?['data']?['alertContext']?['operationName'], ''), '')}"
+            "v": "@{if(equals(outputs('Alert_category'), 'ActivityFailure'), coalesce(outputs('Body_obj')?['data']?['alertContext']?['operationName'], ''), '')}"
           },
           {
             "k": "失败类型",
@@ -218,11 +222,11 @@
           },
           {
             "k": "调用方",
-            "v": "@{if(equals(outputs('Alert_category'), 'ActivityFailure'), coalesce(triggerBody()?['data']?['alertContext']?['caller'], ''), '')}"
+            "v": "@{if(equals(outputs('Alert_category'), 'ActivityFailure'), coalesce(outputs('Body_obj')?['data']?['alertContext']?['caller'], ''), '')}"
           },
           {
             "k": "告警规则",
-            "v": "@{if(or(not(empty(triggerBody()?['data']?['alertContext']?['condition']?['allOf'])), equals(outputs('Alert_category'), 'ResourceHealth'), equals(outputs('Alert_category'), 'ActivityFailure')), '', coalesce(triggerBody()?['data']?['essentials']?['alertRule'], ''))}"
+            "v": "@{if(or(not(empty(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'])), equals(outputs('Alert_category'), 'ResourceHealth'), equals(outputs('Alert_category'), 'ActivityFailure')), '', coalesce(outputs('Body_obj')?['data']?['essentials']?['alertRule'], ''))}"
           }
         ],
         "links": {
@@ -237,9 +241,15 @@
     },
     "Events": {
       "type": "Compose",
-      "inputs": "@if(outputs('Is_alert'), if(or(equals(outputs('Alert_category'), 'ServiceHealth.Push'), and(equals(outputs('Alert_category'), 'ResourceHealth'), contains(parameters('resourceHealthExcludedTitles'), coalesce(triggerBody()?['data']?['alertContext']?['properties']?['title'], '-')))), json('[]'), createArray(outputs('Normalize'))), coalesce(triggerBody()?['events'], json('[]')))",
+      "inputs": "@if(outputs('Is_alert'), if(or(equals(outputs('Alert_category'), 'ServiceHealth.Push'), and(equals(outputs('Alert_category'), 'ResourceHealth'), contains(parameters('resourceHealthExcludedTitles'), coalesce(outputs('Body_obj')?['data']?['alertContext']?['properties']?['title'], '-')))), json('[]'), createArray(outputs('Normalize'))), if(outputs('Is_eventgrid'), body('Keyvault_standard'), coalesce(outputs('Body_obj')?['events'], json('[]'))))",
       "runAfter": {
         "Normalize": [
+          "Succeeded"
+        ],
+        "Keyvault_standard": [
+          "Succeeded"
+        ],
+        "Validation_events": [
           "Succeeded"
         ]
       }
@@ -248,10 +258,8 @@
       "type": "Response",
       "kind": "Http",
       "inputs": {
-        "statusCode": 202,
-        "body": {
-          "accepted": "@length(outputs('Events'))"
-        }
+        "statusCode": "@if(greater(length(body('Validation_events')), 0), 200, 202)",
+        "body": "@if(greater(length(body('Validation_events')), 0), json(concat('{\"validationResponse\":\"', first(body('Validation_events'))?['data']?['validationCode'], '\"}')), json(concat('{\"accepted\":', string(length(outputs('Events'))), '}')))"
       },
       "runAfter": {
         "Events": [
@@ -800,7 +808,7 @@
     },
     "Metric_name_cn": {
       "type": "Compose",
-      "inputs": "@{if(empty(triggerBody()?['data']?['alertContext']?['condition']?['allOf']), '', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName'], 'Percentage CPU'), 'CPU 使用率', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName'], 'Data Disk Bandwidth Consumed Percentage'), '数据盘带宽使用率', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName'], 'Data Disk IOPS Consumed Percentage'), '数据盘 IOPS 使用率', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName'], 'RunsFailed'), '运行失败次数', coalesce(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName'], '查询结果'))))))}",
+      "inputs": "@{if(empty(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf']), '', if(equals(first(coalesce(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName'], 'Percentage CPU'), 'CPU 使用率', if(equals(first(coalesce(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName'], 'Data Disk Bandwidth Consumed Percentage'), '数据盘带宽使用率', if(equals(first(coalesce(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName'], 'Data Disk IOPS Consumed Percentage'), '数据盘 IOPS 使用率', if(equals(first(coalesce(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName'], 'RunsFailed'), '运行失败次数', coalesce(first(coalesce(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName'], '查询结果'))))))}",
       "runAfter": {
         "Alert_category": [
           "Succeeded"
@@ -809,7 +817,7 @@
     },
     "Metric_value": {
       "type": "Compose",
-      "inputs": "@{if(empty(triggerBody()?['data']?['alertContext']?['condition']?['allOf']), '', formatNumber(float(coalesce(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricValue'], 0)), '0.##'))}",
+      "inputs": "@{if(empty(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf']), '', formatNumber(float(coalesce(first(coalesce(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricValue'], 0)), '0.##'))}",
       "runAfter": {
         "Metric_name_cn": [
           "Succeeded"
@@ -818,7 +826,7 @@
     },
     "Metric_condition": {
       "type": "Compose",
-      "inputs": "@{if(empty(triggerBody()?['data']?['alertContext']?['condition']?['allOf']), '', concat(if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['operator'], 'GreaterThanOrEqual'), '≥ ', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['operator'], 'GreaterThan'), '> ', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['operator'], 'LessThan'), '< ', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['operator'], 'LessThanOrEqual'), '≤ ', concat(string(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['operator']), ' '))))), string(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['threshold']), '（', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['timeAggregation'], 'Average'), '平均值', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['timeAggregation'], 'Total'), '总计', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['timeAggregation'], 'Maximum'), '最大值', if(equals(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['timeAggregation'], 'Count'), '计数', string(first(coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['timeAggregation']))))), '，', replace(replace(replace(replace(replace(replace(string(triggerBody()?['data']?['alertContext']?['condition']?['windowSize']), 'PT', ''), 'P', ''), 'T', ''), 'D', ' 天'), 'M', ' 分钟'), 'H', ' 小时'), '）'))}",
+      "inputs": "@{if(empty(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf']), '', concat(if(equals(first(coalesce(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['operator'], 'GreaterThanOrEqual'), '≥ ', if(equals(first(coalesce(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['operator'], 'GreaterThan'), '> ', if(equals(first(coalesce(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['operator'], 'LessThan'), '< ', if(equals(first(coalesce(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['operator'], 'LessThanOrEqual'), '≤ ', concat(string(first(coalesce(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['operator']), ' '))))), string(first(coalesce(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['threshold']), '（', if(equals(first(coalesce(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['timeAggregation'], 'Average'), '平均值', if(equals(first(coalesce(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['timeAggregation'], 'Total'), '总计', if(equals(first(coalesce(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['timeAggregation'], 'Maximum'), '最大值', if(equals(first(coalesce(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['timeAggregation'], 'Count'), '计数', string(first(coalesce(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['timeAggregation']))))), '，', replace(replace(replace(replace(replace(replace(string(outputs('Body_obj')?['data']?['alertContext']?['condition']?['windowSize']), 'PT', ''), 'P', ''), 'T', ''), 'D', ' 天'), 'M', ' 分钟'), 'H', ' 小时'), '）'))}",
       "runAfter": {
         "Metric_value": [
           "Succeeded"
@@ -853,7 +861,7 @@
     },
     "Operation_cn": {
       "type": "Compose",
-      "inputs": "@{if(empty(triggerBody()?['data']?['alertContext']?['operationName']), '', if(equals(last(split(coalesce(triggerBody()?['data']?['alertContext']?['operationName'], ''), '/')), 'write'), '创建/更新', if(equals(last(split(coalesce(triggerBody()?['data']?['alertContext']?['operationName'], ''), '/')), 'delete'), '删除', if(and(equals(last(split(coalesce(triggerBody()?['data']?['alertContext']?['operationName'], ''), '/')), 'action'), greater(length(split(coalesce(triggerBody()?['data']?['alertContext']?['operationName'], ''), '/')), 1)), coalesce(outputs('Health_cn')?[concat('op:', toLower(split(coalesce(triggerBody()?['data']?['alertContext']?['operationName'], ''), '/')[sub(length(split(coalesce(triggerBody()?['data']?['alertContext']?['operationName'], ''), '/')), 2)]))], split(coalesce(triggerBody()?['data']?['alertContext']?['operationName'], ''), '/')[sub(length(split(coalesce(triggerBody()?['data']?['alertContext']?['operationName'], ''), '/')), 2)]), last(split(coalesce(triggerBody()?['data']?['alertContext']?['operationName'], ''), '/'))))))}",
+      "inputs": "@{if(empty(outputs('Body_obj')?['data']?['alertContext']?['operationName']), '', if(equals(last(split(coalesce(outputs('Body_obj')?['data']?['alertContext']?['operationName'], ''), '/')), 'write'), '创建/更新', if(equals(last(split(coalesce(outputs('Body_obj')?['data']?['alertContext']?['operationName'], ''), '/')), 'delete'), '删除', if(and(equals(last(split(coalesce(outputs('Body_obj')?['data']?['alertContext']?['operationName'], ''), '/')), 'action'), greater(length(split(coalesce(outputs('Body_obj')?['data']?['alertContext']?['operationName'], ''), '/')), 1)), coalesce(outputs('Health_cn')?[concat('op:', toLower(split(coalesce(outputs('Body_obj')?['data']?['alertContext']?['operationName'], ''), '/')[sub(length(split(coalesce(outputs('Body_obj')?['data']?['alertContext']?['operationName'], ''), '/')), 2)]))], split(coalesce(outputs('Body_obj')?['data']?['alertContext']?['operationName'], ''), '/')[sub(length(split(coalesce(outputs('Body_obj')?['data']?['alertContext']?['operationName'], ''), '/')), 2)]), last(split(coalesce(outputs('Body_obj')?['data']?['alertContext']?['operationName'], ''), '/'))))))}",
       "runAfter": {
         "Health_cn": [
           "Succeeded"
@@ -890,6 +898,128 @@
       },
       "runAfter": {
         "Init_attempt": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Body_obj": {
+      "type": "Compose",
+      "inputs": "@if(startsWith(trim(string(triggerBody())), '['), json('{}'), triggerBody())",
+      "runAfter": {}
+    },
+    "Is_eventgrid": {
+      "type": "Compose",
+      "inputs": "@startsWith(trim(string(triggerBody())), '[')",
+      "runAfter": {
+        "Body_obj": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Eventgrid_events": {
+      "type": "Compose",
+      "inputs": "@if(startsWith(trim(string(triggerBody())), '['), triggerBody(), json('[]'))",
+      "runAfter": {
+        "Is_eventgrid": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Validation_events": {
+      "type": "Query",
+      "inputs": {
+        "from": "@outputs('Eventgrid_events')",
+        "where": "@equals(item()?['eventType'], 'Microsoft.EventGrid.SubscriptionValidationEvent')"
+      },
+      "runAfter": {
+        "Eventgrid_events": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Keyvault_events": {
+      "type": "Query",
+      "inputs": {
+        "from": "@outputs('Eventgrid_events')",
+        "where": "@and(startsWith(coalesce(item()?['eventType'], ''), 'Microsoft.KeyVault.'), or(endsWith(coalesce(item()?['eventType'], ''), 'NearExpiry'), endsWith(coalesce(item()?['eventType'], ''), 'Expired')))"
+      },
+      "runAfter": {
+        "Eventgrid_events": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Keyvault_standard": {
+      "type": "Select",
+      "inputs": {
+        "from": "@body('Keyvault_events')",
+        "select": {
+          "schemaVersion": "1.0",
+          "eventId": "@{concat('kv:', toLower(coalesce(item()?['data']?['Id'], item()?['id'])), ':', if(endsWith(replace(item()?['eventType'], 'Microsoft.KeyVault.', ''), 'NearExpiry'), 'NearExpiry', 'Expired'))}",
+          "source": {
+            "module": "M9-KeyVault",
+            "channel": "EventGrid",
+            "rawId": "@{item()?['id']}"
+          },
+          "category": "@{concat('KeyVault.', replace(item()?['eventType'], 'Microsoft.KeyVault.', ''))}",
+          "severity": "@{if(endsWith(replace(item()?['eventType'], 'Microsoft.KeyVault.', ''), 'NearExpiry'), 'Warning', 'Critical')}",
+          "status": "New",
+          "initiator": "Platform",
+          "title": "@{concat(coalesce(item()?['data']?['VaultName'], ''), '/', coalesce(item()?['data']?['ObjectName'], item()?['subject'], ''), '：', if(startsWith(replace(item()?['eventType'], 'Microsoft.KeyVault.', ''), 'Certificate'), '证书', if(startsWith(replace(item()?['eventType'], 'Microsoft.KeyVault.', ''), 'Secret'), '机密', '密钥')), if(endsWith(replace(item()?['eventType'], 'Microsoft.KeyVault.', ''), 'NearExpiry'), concat('将于 ', convertTimeZone(addSeconds('1970-01-01T00:00:00Z', int(string(coalesce(item()?['data']?['EXP'], 0)))), 'UTC', 'China Standard Time', 'yyyy-MM-dd'), ' 过期', if(equals(max(0, div(add(sub(int(string(coalesce(item()?['data']?['EXP'], 0))), div(sub(ticks(utcNow()), ticks('1970-01-01T00:00:00Z')), 10000000)), 86399), 86400)), 0), '（不足 1 天）', concat('（剩 ', string(max(0, div(add(sub(int(string(coalesce(item()?['data']?['EXP'], 0))), div(sub(ticks(utcNow()), ticks('1970-01-01T00:00:00Z')), 10000000)), 86399), 86400))), ' 天）'))), concat('已于 ', convertTimeZone(addSeconds('1970-01-01T00:00:00Z', int(string(coalesce(item()?['data']?['EXP'], 0)))), 'UTC', 'China Standard Time', 'yyyy-MM-dd'), ' 过期')))}",
+          "summary": "@{concat('Key Vault ', coalesce(item()?['data']?['VaultName'], ''), ' 中的', if(startsWith(replace(item()?['eventType'], 'Microsoft.KeyVault.', ''), 'Certificate'), '证书', if(startsWith(replace(item()?['eventType'], 'Microsoft.KeyVault.', ''), 'Secret'), '机密', '密钥')), ' ', coalesce(item()?['data']?['ObjectName'], item()?['subject'], ''), '（版本 ', coalesce(item()?['data']?['Version'], ''), '）', if(endsWith(replace(item()?['eventType'], 'Microsoft.KeyVault.', ''), 'NearExpiry'), concat('将于 ', convertTimeZone(addSeconds('1970-01-01T00:00:00Z', int(string(coalesce(item()?['data']?['EXP'], 0)))), 'UTC', 'China Standard Time', 'yyyy-MM-dd HH:mm:ss'), '（北京时间）过期，请及时更新或轮换。'), concat('已于 ', convertTimeZone(addSeconds('1970-01-01T00:00:00Z', int(string(coalesce(item()?['data']?['EXP'], 0)))), 'UTC', 'China Standard Time', 'yyyy-MM-dd HH:mm:ss'), '（北京时间）过期，请尽快更新或轮换，并确认使用它的应用没有受到影响。')))}",
+          "time": {
+            "eventTime": "@{item()?['eventTime']}"
+          },
+          "resource": {
+            "id": "@{coalesce(item()?['topic'], '')}",
+            "type": "microsoft.keyvault/vaults",
+            "name": "@{coalesce(item()?['data']?['VaultName'], '')}",
+            "subscriptionId": "@{split(concat(coalesce(item()?['topic'], ''), '/////////'), '/')[2]}",
+            "resourceGroup": "@{split(concat(coalesce(item()?['topic'], ''), '/////////'), '/')[4]}"
+          },
+          "details": {
+            "objectType": "@{if(startsWith(replace(item()?['eventType'], 'Microsoft.KeyVault.', ''), 'Certificate'), 'Certificate', if(startsWith(replace(item()?['eventType'], 'Microsoft.KeyVault.', ''), 'Secret'), 'Secret', 'Key'))}",
+            "objectName": "@{coalesce(item()?['data']?['ObjectName'], item()?['subject'], '')}",
+            "version": "@{coalesce(item()?['data']?['Version'], '')}",
+            "objectId": "@{item()?['data']?['Id']}",
+            "exp": "@int(string(coalesce(item()?['data']?['EXP'], 0)))",
+            "nbf": "@int(string(coalesce(item()?['data']?['NBF'], 0)))",
+            "eventGridEventType": "@{item()?['eventType']}",
+            "eventGridId": "@{item()?['id']}"
+          },
+          "display": [
+            {
+              "k": "对象类型",
+              "v": "@{if(startsWith(replace(item()?['eventType'], 'Microsoft.KeyVault.', ''), 'Certificate'), '证书', if(startsWith(replace(item()?['eventType'], 'Microsoft.KeyVault.', ''), 'Secret'), '机密', '密钥'))}"
+            },
+            {
+              "k": "对象名",
+              "v": "@{coalesce(item()?['data']?['ObjectName'], item()?['subject'], '')}"
+            },
+            {
+              "k": "版本",
+              "v": "@{coalesce(item()?['data']?['Version'], '')}"
+            },
+            {
+              "k": "过期时间（北京时间）",
+              "v": "@{if(equals(int(string(coalesce(item()?['data']?['EXP'], 0))), 0), '', convertTimeZone(addSeconds('1970-01-01T00:00:00Z', int(string(coalesce(item()?['data']?['EXP'], 0)))), 'UTC', 'China Standard Time', 'yyyy-MM-dd HH:mm:ss'))}"
+            },
+            {
+              "k": "剩余天数",
+              "v": "@{if(endsWith(replace(item()?['eventType'], 'Microsoft.KeyVault.', ''), 'NearExpiry'), string(max(0, div(add(sub(int(string(coalesce(item()?['data']?['EXP'], 0))), div(sub(ticks(utcNow()), ticks('1970-01-01T00:00:00Z')), 10000000)), 86399), 86400))), '')}"
+            },
+            {
+              "k": "生效时间（北京时间）",
+              "v": "@{if(equals(int(string(coalesce(item()?['data']?['NBF'], 0))), 0), '', convertTimeZone(addSeconds('1970-01-01T00:00:00Z', int(string(coalesce(item()?['data']?['NBF'], 0)))), 'UTC', 'China Standard Time', 'yyyy-MM-dd HH:mm:ss'))}"
+            }
+          ],
+          "links": {
+            "portal": "@{concat('https://portal.azure.com/#@/resource', coalesce(item()?['topic'], ''), '/', if(startsWith(replace(item()?['eventType'], 'Microsoft.KeyVault.', ''), 'Certificate'), 'certificates', if(startsWith(replace(item()?['eventType'], 'Microsoft.KeyVault.', ''), 'Secret'), 'secrets', 'keys')))}"
+          }
+        }
+      },
+      "runAfter": {
+        "Keyvault_events": [
           "Succeeded"
         ]
       }

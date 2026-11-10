@@ -66,6 +66,12 @@ var defaultCategoryNames = {
   'AKS.Upgrade': 'AKS 升级'
   'AKS.VersionEOL': 'AKS 版本到期'
   SelfMonitor: '告警系统自检'
+  'KeyVault.CertificateNearExpiry': '证书即将过期'
+  'KeyVault.CertificateExpired': '证书已过期'
+  'KeyVault.SecretNearExpiry': '机密即将过期'
+  'KeyVault.SecretExpired': '机密已过期'
+  'KeyVault.KeyNearExpiry': '密钥即将过期'
+  'KeyVault.KeyExpired': '密钥已过期'
   LogAlert: '日志告警'
   'Alert.Other': '其他告警'
 }

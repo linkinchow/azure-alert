@@ -340,37 +340,42 @@ Flash 的分类和级别由 `modules/m2-flash/rules.json` 按 annotationName 决
 | 125 | 选项说明 | 所有资源、所有操作中 level 为 Error / Critical 的失败（容量不足、配额不足、策略拒绝等会自动归类）。自动化调用多的环境量可能很大。 |
 | 129 | 选项 | M8 AKS 升级与版本到期 |
 | 130 | 选项说明 | AKS 自动升级的计划和失败、Kubernetes 版本即将到期 / 已超出支持期。 |
-| 142 | 步骤 | 飞书通知 |
-| 148 | label | 默认飞书 webhook |
-| 149 | label | 再次输入默认飞书 webhook（不显示） |
-| 154 | 校验提示 | 请输入飞书 / Lark 自定义机器人 webhook |
-| 159 | tooltip | 飞书群自定义机器人的 webhook 地址。没有在"按分类路由"里单独指定的告警都发到这里。 |
-| 167 | 说明框 | 想把不同告警发到不同的飞书群，就在下面对应的分类后面填上该群的 webhook，不填的发到上面的默认 webhook。ServiceHealth = M1 服务健康，Flash = M2 VM 平台事件，ResourceHealth = M3 资源健康，Metric = M4 指标，Quota = M5 配额，ScheduledEvent = M6 计划事件，ActivityFailure = M7 操作失败，AKS = M8 AKS，SelfMonitor = 告警系统自检。点击查看完整说明和示例。 |
-| 174 | label | 按分类路由（可选） |
-| 175 | tooltip | 留空的分类发到默认 webhook。要把某个小类单独发到一个群，可以再加一行，例如 "Flash.HostFailure": "https://..."；完整分类名优先于模块前缀。[完整说明和示例](https://github.com/linkinchow/azure-alert#多个飞书群按分类路由) |
-| 181 | 校验提示 | 请输入 JSON 对象：键用英文双引号，最后一项后面不要加逗号 |
-| 201 | label | ARG 读取权限（Reader）授予方式 |
-| 202 | 选项 | 按订阅授予 |
-| 210 | 选项 | 不授予（部署后用 scripts/grant-reader-mg.sh 在管理组上授予） |
-| 215 | tooltip | Pull 模块（M1 / M2 / M5 / M6 / M8）需要对被监控的订阅有 Reader 权限。按订阅授予会在每个选中的订阅上授予；也可以部署后在管理组上统一授予。 |
-| 220 | label | 要告警的订阅（Pull 模块读取范围，授予 Reader） |
-| 229 | tooltip | 这些订阅会给告警托管身份授予 Reader，Pull 模块只读取这些订阅。 |
-| 234 | label | 排除的订阅（可选） |
-| 243 | tooltip | 在管理组上授权时，管理组下不想告警的订阅。 |
-| 248 | label | 部署 M3 / M4 / M7 告警规则的订阅 |
-| 257 | tooltip | M3 / M4 / M7 的告警规则会建在这些订阅里，监控整个订阅。 |
-| 262 | label | M4 metric 规则的区域（逗号分隔，例如 eastus2,westus3） |
-| 267 | 校验提示 | 区域名用逗号分隔，例如 eastus2,westus3 |
-| 269 | tooltip | M4 指标规则按区域创建，多个区域用逗号分隔，例如 eastus2,westus3。 |
-| 274 | label | M4 CPU 告警阈值（%，5 分钟平均） |
-| 276 | tooltip | 平台 CPU 指标在部分规格上到不了 100%（实测 D2s_v5 最高 83.3%），建议 80。 |
-| 280 | 校验提示 | 1-100 的整数 |
-| 286 | label | M4 数据盘带宽使用率告警阈值（%，5 分钟平均） |
-| 297 | label | 首次运行静默（不推送历史事件） |
-| 299 | tooltip | 建议勾选：首次运行只记录当前已有的事件，不把历史事件一次性推进群。 |
-| 307 | 选项 | 否 |
-| 317 | label | 事件落地到 Log Analytics 自定义表 AzureAlertEvents_CL |
-| 319 | tooltip | 把标准事件同时写入 Log Analytics 自定义表 AzureAlertEvents_CL，便于以后统计和分析。会新建一个工作区。 |
+| 134 | 选项 | M9 Key Vault 到期提醒 |
+| 135 | 选项说明 | 证书、机密、密钥到期前 30 天和过期时提醒。为下一步选中的现有 Key Vault 建 Event Grid 订阅，部署人需要对这些 Key Vault 所在资源组有 Event Grid 写权限；以后新建的 Key Vault 按文档接入。 |
+| 147 | 步骤 | 飞书通知 |
+| 153 | label | 默认飞书 webhook |
+| 154 | label | 再次输入默认飞书 webhook（不显示） |
+| 159 | 校验提示 | 请输入飞书 / Lark 自定义机器人 webhook |
+| 164 | tooltip | 飞书群自定义机器人的 webhook 地址。没有在"按分类路由"里单独指定的告警都发到这里。 |
+| 172 | 说明框 | 想把不同告警发到不同的飞书群，就在下面对应的分类后面填上该群的 webhook，不填的发到上面的默认 webhook。ServiceHealth = M1 服务健康，Flash = M2 VM 平台事件，ResourceHealth = M3 资源健康，Metric = M4 指标，Quota = M5 配额，ScheduledEvent = M6 计划事件，ActivityFailure = M7 操作失败，AKS = M8 AKS，KeyVault = M9 Key Vault 到期提醒，SelfMonitor = 告警系统自检。点击查看完整说明和示例。 |
+| 179 | label | 按分类路由（可选） |
+| 180 | tooltip | 留空的分类发到默认 webhook。要把某个小类单独发到一个群，可以再加一行，例如 "Flash.HostFailure": "https://..."；完整分类名优先于模块前缀。[完整说明和示例](https://github.com/linkinchow/azure-alert#多个飞书群按分类路由) |
+| 186 | 校验提示 | 请输入 JSON 对象：键用英文双引号，最后一项后面不要加逗号 |
+| 206 | label | ARG 读取权限（Reader）授予方式 |
+| 207 | 选项 | 按订阅授予 |
+| 215 | 选项 | 不授予（部署后用 scripts/grant-reader-mg.sh 在管理组上授予） |
+| 220 | tooltip | Pull 模块（M1 / M2 / M5 / M6 / M8）需要对被监控的订阅有 Reader 权限。按订阅授予会在每个选中的订阅上授予；也可以部署后在管理组上统一授予。 |
+| 225 | label | 要告警的订阅（Pull 模块读取范围，授予 Reader） |
+| 234 | tooltip | 这些订阅会给告警托管身份授予 Reader，Pull 模块只读取这些订阅。 |
+| 239 | label | 排除的订阅（可选） |
+| 248 | tooltip | 在管理组上授权时，管理组下不想告警的订阅。 |
+| 253 | label | 部署 M3 / M4 / M7 告警规则的订阅 |
+| 262 | tooltip | M3 / M4 / M7 的告警规则会建在这些订阅里，监控整个订阅。 |
+| 267 | label | M4 metric 规则的区域（逗号分隔，例如 eastus2,westus3） |
+| 272 | 校验提示 | 区域名用逗号分隔，例如 eastus2,westus3 |
+| 274 | tooltip | M4 指标规则按区域创建，多个区域用逗号分隔，例如 eastus2,westus3。 |
+| 279 | label | M4 CPU 告警阈值（%，5 分钟平均） |
+| 281 | tooltip | 平台 CPU 指标在部分规格上到不了 100%（实测 D2s_v5 最高 83.3%），建议 80。 |
+| 285 | 校验提示 | 1-100 的整数 |
+| 291 | label | M4 数据盘带宽使用率告警阈值（%，5 分钟平均） |
+| 302 | label | 首次运行静默（不推送历史事件） |
+| 304 | tooltip | 建议勾选：首次运行只记录当前已有的事件，不把历史事件一次性推进群。 |
+| 312 | 选项 | 否 |
+| 322 | label | 事件落地到 Log Analytics 自定义表 AzureAlertEvents_CL |
+| 324 | tooltip | 把标准事件同时写入 Log Analytics 自定义表 AzureAlertEvents_CL，便于以后统计和分析。会新建一个工作区。 |
+| 352 | 说明框 | 选择要接入到期提醒的现有 Key Vault。部署时会在每个选中的 Key Vault 上建一个事件订阅（<前缀>-kv-expiry），Event Grid 会在 Key Vault 所在资源组自动创建或复用它的系统主题，不改动 Key Vault 本身。部署人需要对这些资源组有 Event Grid 写权限（EventGrid Contributor 或 Contributor），没有权限的请不要勾选。以后新建的 Key Vault 用脚本或门户接入，点击查看说明。 |
+| 374 | label | 要接入的 Key Vault |
+| 379 | tooltip | 列出"范围与权限"中所选订阅里的 Key Vault（最多 1000 个）。可以点"全选"。 |
 
 ---
 

@@ -18,6 +18,7 @@
 | M6 Scheduled Events | VM / VMSS 维护的**事前**通知（重启、重新部署、冻结、Spot 驱逐、实例终止） | `ScheduledEvent.Reboot` / `.Redeploy` / `.Freeze` / `.Preempt` / `.Terminate` | ARG `maintenanceresources`（`microsoft.maintenance/scheduledevents`） | Pull，每 1 分钟 | 默认开（需先满足先决条件，否则不会有事件） |
 | M7 操作失败 | **所有资源、所有操作**的失败（活动日志 level 为 Error / Critical） | `ActivityFailure.Capacity` / `.Quota` / `.Policy` / `.Other` | 活动日志 Administrative、level ∈ Error / Critical → activity log alert | Push（实测失败后约 6 分钟到达） | 开 |
 | M8 AKS | AKS 自动升级预告 / 失败 / 跳过；Kubernetes 版本到期 | `AKS.Upgrade`、`AKS.VersionEOL` | ARG `containerserviceeventresources`（`microsoft.containerservice/managedclusters/scheduledevents`） | Pull，每 5 分钟 | 开 |
+| M9 Key Vault 到期 | Key Vault 中证书、机密、密钥即将过期（到期前 30 天）和已过期 | `KeyVault.CertificateNearExpiry` / `.CertificateExpired` / `.SecretNearExpiry` / `.SecretExpired` / `.KeyNearExpiry` / `.KeyExpired` | Key Vault 的 Event Grid 事件 → 每个 Key Vault 一个事件订阅 → Router | Push（事件约 10 分钟内到达） | 关（需对 Key Vault 所在资源组有 Event Grid 写权限；接入说明见 [keyvault-expiry.md](keyvault-expiry.md)） |
 | 自监控 | 告警系统自身的 Logic App 运行失败 | `SelfMonitor` | Logic App 指标 `RunsFailed` → metric alert | Push，每 5 分钟评估，15 分钟窗口 | 开（随 Core 和每个 Pull 模块一起部署） |
 | 兜底 | 客户自己把其他告警规则接到本方案的 Action Group 上 | `Metric.Other`、`LogAlert`、`Alert.Other`（客户自建的 Service Health 告警接进来会被丢弃，服务健康只以 M1 为准） | Common Alert Schema | Push | 只有客户自己接入时才会出现 |
 
@@ -395,6 +396,12 @@
 | 32 | `ScheduledEvent.Freeze` | 计划事件·冻结 | M6 | 提示 | 同上 |
 | 33 | `ScheduledEvent.Preempt` | 计划事件·抢占（Spot 驱逐） | M6 | 警告 / 提示 | 同上 |
 | 34 | `ScheduledEvent.Terminate` | 计划事件·终止 | M6 | 警告 / 提示 | 同上（还需开启 VMSS Terminate Notification） |
+| 35 | `KeyVault.CertificateNearExpiry` | 证书即将过期 | M9 | 警告 | 仅已接入的 Key Vault |
+| 36 | `KeyVault.CertificateExpired` | 证书已过期 | M9 | 严重 | 仅已接入的 Key Vault |
+| 37 | `KeyVault.SecretNearExpiry` | 机密即将过期 | M9 | 警告 | 仅已接入的 Key Vault |
+| 38 | `KeyVault.SecretExpired` | 机密已过期 | M9 | 严重 | 仅已接入的 Key Vault |
+| 39 | `KeyVault.KeyNearExpiry` | 密钥即将过期 | M9 | 警告 | 仅已接入的 Key Vault |
+| 40 | `KeyVault.KeyExpired` | 密钥已过期 | M9 | 严重 | 仅已接入的 Key Vault |
 
 > 中文名可以通过参数 `categoryNames` 覆盖（`modules/core/main.bicep` 中的 `defaultCategoryNames` 是内置默认值）。
 

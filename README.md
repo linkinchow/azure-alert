@@ -18,6 +18,7 @@
 | M5 Quota（Compute） | ARG `quotaresources` | Pull，每 15 分钟 | ✅ |
 | M7 Activity 失败 | Activity Log | 每个订阅一条 activity log alert | ✅ |
 | M8 AKS 平台事件 | ARG `containerserviceeventresources` | Pull，每 5 分钟 | ✅ |
+| M9 Key Vault 到期提醒（证书 / 机密 / 密钥） | Key Vault 的 Event Grid 事件 | 每个 Key Vault 一个事件订阅，推送到 Router；见 [docs/keyvault-expiry.md](docs/keyvault-expiry.md) | 不选（需要额外权限） |
 | 自监控 | Logic App `RunsFailed` 指标 | 每个 workflow 一条 metric alert，分类为 `SelfMonitor` | 随 core / 模块部署 |
 | 数据落地（可选） | — | Log Analytics 自定义表 `AzureAlertEvents_CL`（DCR + Logs Ingestion API） | `sinkEnabled=false` |
 
@@ -122,6 +123,7 @@ az deployment sub create -l eastus2 -n azure-alert -f main.bicep -p @deploy.loca
 | `scheduledEvents` | M6 计划事件（需要先满足先决条件，见 `modules/m6-scheduled-events/README.md`） |
 | `activityFailure` | M7 资源操作失败 |
 | `aks` | M8 AKS |
+| `keyVaultExpiry` | M9 Key Vault 到期提醒（默认 `false`；要接入的现有 Key Vault 填在 `keyVaultIds`，见 [docs/keyvault-expiry.md](docs/keyvault-expiry.md)） |
 
 上面的例子不部署 M4 和 M7。不传 `modules` 时全部部署。
 
@@ -277,6 +279,7 @@ python scripts/remove-module.py --prefix aa --resource-group rg-azure-alert --mo
 | M6 | Logic App `<前缀>-m6-scheduled-events`，指标告警 `<前缀>-m6-scheduled-events-runs-failed` |
 | M7 | 活动日志告警 `<前缀>-m7-activity-failure`（每个推送订阅一条） |
 | M8 | Logic App `<前缀>-m8-aks`，指标告警 `<前缀>-m8-aks-runs-failed` |
+| M9 | 每个已接入 Key Vault 上的事件订阅 `<前缀>-kv-expiry`：用 `python scripts/kv-expiry-subscribe.py --remove --apply` 删除（`remove-module.py` 不处理 M9） |
 
 删除后再部署时，把对应模块设为 `false`（门户里不勾），就不会再建出来。
 

@@ -27,6 +27,7 @@ param modules object = {
   scheduledEvents: true
   activityFailure: true
   aks: true
+  keyVaultExpiry: false
 }
 
 @secure()
@@ -36,6 +37,9 @@ param webhooks object = {}
 @secure()
 @description('Default Feishu webhook (merged into webhooks as "default"; convenient for the portal wizard).')
 param defaultWebhook string = ''
+
+@description('M9: resource IDs of existing Key Vaults to connect (an Event Grid subscription named <prefix>-kv-expiry is created on each, in the resource group of the vault; the deployer needs Event Grid write access there). Key Vaults created later are connected with scripts/kv-expiry-subscribe.py or by hand, see docs/keyvault-expiry.md.')
+param keyVaultIds array = []
 
 @description('Reader assignment for the alerting identity: subscription (each id in readerSubscriptionIds), resourceGroup (central RG only, which core always assigns; for testing) or none (assign at management group yourself, see scripts/grant-reader-mg.sh).')
 @allowed([
@@ -262,6 +266,17 @@ module push 'modules/push/main.bicep' = [for (sub, i) in (anyPush ? union(pushSu
     metricRegions: metricRegions
     cpuThreshold: cpuThreshold
     dataDiskBandwidthThreshold: dataDiskBandwidthThreshold
+  }
+}]
+
+// union(x, []) removes duplicates.
+module m9 'modules/m9-keyvault/main.bicep' = [for kvId in ((modules.?keyVaultExpiry ?? false) ? union(keyVaultIds, []) : []): {
+  name: '${prefix}-m9-${uniqueString(kvId)}'
+  scope: resourceGroup(split(kvId, '/')[2], split(kvId, '/')[4])
+  params: {
+    vaultName: last(split(kvId, '/'))
+    prefix: prefix
+    routerId: '${subscription().id}/resourceGroups/${resourceGroupName}/providers/Microsoft.Logic/workflows/${core.outputs.routerName}'
   }
 }]
 

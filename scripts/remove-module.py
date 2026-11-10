@@ -25,12 +25,15 @@ MODULES = {
 TYPES = ['microsoft.logic/workflows', 'microsoft.insights/metricalerts', 'microsoft.insights/activitylogalerts']
 
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-ap.add_argument('--module', action='append', required=True, choices=sorted(MODULES), help='module to remove (repeatable)')
+ap.add_argument('--module', action='append', required=True, choices=sorted(MODULES) + ['m9'], help='module to remove (repeatable)')
 ap.add_argument('--prefix', default='aa', help='resource name prefix used at deployment (default aa)')
 ap.add_argument('--resource-group', default='rg-azure-alert', help='central resource group (default rg-azure-alert)')
 ap.add_argument('--push-resource-group', help='resource group of the M3 / M4 / M7 rules in each push subscription (default: same as --resource-group)')
 ap.add_argument('--apply', action='store_true', help='delete the listed resources')
 args = ap.parse_args()
+if 'm9' in args.module:
+    sys.exit('M9 (Key Vault expiry) has no resources of its own. Remove its Event Grid subscriptions with:\n'
+             '  python scripts/kv-expiry-subscribe.py --prefix <prefix> --resource-group <rg> --remove --apply')
 groups = {args.resource_group.lower(), (args.push_resource_group or args.resource_group).lower()}
 sys.stdout.reconfigure(encoding='utf-8')
 
