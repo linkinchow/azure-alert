@@ -270,6 +270,11 @@
 ## 8. M7 资源操作失败
 
 - **数据源**：活动日志 Administrative 类别，通过 activity log alert（`<prefix>-m7-activity-failure`）推送。条件：`category = Administrative`，`level` 为 Error 或 Critical（参数 `activityFailureLevels`），**所有资源类型、所有操作**。可选参数 `activityFailureOperations` 限定操作列表，默认为空（全部）。
+- **条件写法限制**（官方文档未写明，2026-11 实测，在订阅范围创建临时规则验证）：
+  - 订阅范围 + Administrative 类别的活动日志告警规则，Azure 要求除 `category` 外至少还有一个**顶层平铺**的过滤条件。只用 `anyOf` 分组的条件不被认可，创建时报 `UnsupportedCondition: Alert Rule with category 'Administrative' and subscription scope must have at least one additional filtering condition`。
+  - 所以 `level` 写成一个平铺条件，多个值用 `containsAny`（"等于其中任意一个"，精确匹配，不是子串匹配）。
+  - `operationName` **不支持** `containsAny`（报 `ConditionFieldIsNull: operation name provided is null or empty`），只能用 `equals`；多个操作用 `anyOf` 包起来。因为 `level` 已经是平铺条件，这样写可以通过校验。
+  - 自己编写这类规则时也要注意以上几点。
 - **分类方式**：Router 在 `statusMessage` **全文中做子串匹配**，按以下顺序判断：
 
 | category | 中文名 | 判定条件（按顺序） | 严重度 |

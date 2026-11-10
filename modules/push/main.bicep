@@ -107,7 +107,8 @@ resource activityFailure 'Microsoft.Insights/activityLogAlerts@2020-10-01' = if 
           field: 'category'
           equals: 'Administrative'
         }
-        // containsAny, not anyOf: Azure rejects a subscription-scoped Administrative rule whose only extra filter is an anyOf (UnsupportedCondition).
+        // Subscription-scoped Administrative rules need at least one flat extra condition (anyOf-only is rejected: UnsupportedCondition),
+        // so level is a flat containsAny. operationName does not accept containsAny (ConditionFieldIsNull), so operations stay anyOf/equals.
         {
           field: 'level'
           containsAny: activityFailureLevels
