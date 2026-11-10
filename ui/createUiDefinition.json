@@ -366,12 +366,9 @@
             "type": "Microsoft.Solutions.ArmApiControl",
             "request": {
               "method": "POST",
-              "path": "providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01",
+              "path": "/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01",
               "body": {
-                "query": "resources | where type =~ 'microsoft.keyvault/vaults' | project id, name, resourceGroup, subscriptionId | order by name asc",
-                "options": {
-                  "$top": 1000
-                }
+                "query": "resources | where type =~ 'microsoft.keyvault/vaults' | project id, name, resourceGroup, subscriptionId | order by name asc"
               }
             }
           },
@@ -389,6 +386,14 @@
               "required": false
             },
             "visible": "[contains(steps('modules').modules, 'keyVaultExpiry')]"
+          },
+          {
+            "name": "kvDebug",
+            "type": "Microsoft.Common.TextBlock",
+            "visible": "[contains(steps('modules').modules, 'keyVaultExpiry')]",
+            "options": {
+              "text": "[concat('调试（临时）：', substring(string(steps('keyvault').kvApi), 0, min(600, length(string(steps('keyvault').kvApi)))))]"
+            }
           }
         ]
       }
