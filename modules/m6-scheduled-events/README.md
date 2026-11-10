@@ -12,10 +12,10 @@
 可以用脚本批量检查和开启（默认只检查、不改任何东西）：
 
 ```bash
-# 检查：feature flag、provider 注册、每个订阅里 VM / VMSS 的开启情况，并列出没开启的资源
+# 检查：feature flag、provider 注册、每个订阅里 VM / 可用性集 / VMSS 的开启情况，并列出没开启的资源
 scripts/enable-scheduled-events.sh --subscriptions "<订阅 ID> <订阅 ID>"
 
-# 开启：注册缺少的 feature flag / provider，并给没开启的 VM 开启发布
+# 开启：注册缺少的 feature flag / provider，并给没开启的单台 VM 和可用性集开启发布
 scripts/enable-scheduled-events.sh --subscriptions "<订阅 ID>" --apply
 
 # 同时处理 VMSS（只处理 Flexible，以及升级策略为 Manual 的 Uniform；Automatic / Rolling 的会跳过并列出）
@@ -26,7 +26,12 @@ scripts/enable-scheduled-events.sh --subscriptions "<订阅 ID>" --include-vmss 
 - feature flag 第一次注册后要等状态变成 Registered（可能要几分钟到几十分钟），再运行一次脚本。
 - 脚本不会修改"用户发起的重启 / 重新部署自动批准"设置。
 - 升级策略为 Automatic / Rolling 的 Uniform VMSS 改模型可能会触发实例更新，脚本不处理，请在维护窗口手动开启。
-- 已验证（2026-11-02）：在一台新建的 VM 上 `--apply` 开启成功，开启过程中 VM 没有重启。VMSS 的开启没有实测。
+- **可用性集和 VMSS 里的 VM 不能逐台设置**，要在可用性集或 VMSS 上设置一次，对其中所有 VM 生效。逐台设置会被 Azure 拒绝（`OperationNotAllowed`），脚本会自动改为在可用性集 / VMSS 上设置。没有 VM 的空可用性集不处理。
+- **AKS 节点池等平台托管的资源永远不改**，只在检查结果里汇总一行。判断依据：所在资源组是托管资源组（有 `managedBy`，比如 AKS 的节点资源组 `MC_*`，或 Databricks 的托管资源组），或者带 `aks-managed-*` 标签。AKS 不支持直接修改节点池的 VMSS，改了集群就不受支持，升级、扩缩容后设置也可能被覆盖。AKS 节点的平台事件由 M2（事后记录）和 M8（AKS 升级）覆盖，但没有 M6 的提前预告。
+- 已验证：
+  - 2026-11-02：在一台新建的 VM 上 `--apply` 开启成功，开启过程中 VM 没有重启；
+  - 2026-11-10：可用性集里的 VM 逐台设置被拒绝；脚本在可用性集上开启成功，VM 没有重启；在有几十个 AKS 集群的订阅里检查，AKS 节点池全部被识别并跳过。
+  - VMSS 的开启没有实测。
 
 下面是脚本做的事情，也可以手动执行：
 
@@ -40,11 +45,11 @@ scripts/enable-scheduled-events.sh --subscriptions "<订阅 ID>" --include-vmss 
    az provider register --namespace Microsoft.Maintenance
    ```
 
-2. **每台 VM / 每个 VMSS**打开"发布到 Event Grid 和 Resource Graph"（Compute API 2025-04-01 及以上）：
+2. **每台单独的 VM、每个可用性集、每个 VMSS**打开"发布到 Event Grid 和 Resource Graph"（Compute API 2025-04-01 及以上；可用性集或 VMSS 里的 VM 只在可用性集或 VMSS 上设置）：
 
    ```bash
    az rest --method patch \
-     --url "https://management.azure.com/<VM 或 VMSS 资源 ID>?api-version=2025-04-01" \
+     --url "https://management.azure.com/<VM、可用性集或 VMSS 的资源 ID>?api-version=2025-04-01" \
      --body '{"properties":{"scheduledEventsPolicy":{"scheduledEventsAdditionalPublishingTargets":{"eventGridAndResourceGraph":{"enable":true,"scheduledEventsApiVersion":"2020-07-01"}}}}}'
    ```
 
