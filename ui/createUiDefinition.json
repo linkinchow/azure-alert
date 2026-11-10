@@ -380,20 +380,12 @@
             "selectAll": true,
             "filter": true,
             "multiLine": true,
-            "toolTip": "列出当前账号能看到的所有订阅里的 Key Vault（最多 1000 个），每项下方显示资源组和订阅 ID。可以搜索，也可以全选。",
+            "toolTip": "列出当前账号能看到的所有订阅里的 Key Vault，每项下方显示资源组和订阅 ID。可以搜索，也可以全选。",
             "constraints": {
               "allowedValues": "[map(steps('keyvault').kvApi.data, (i) => parse(concat('{\"label\":\"', i.name, '\",\"description\":\"', i.resourceGroup, ' / ', i.subscriptionId, '\",\"value\":\"', i.id, '\"}')))]",
               "required": false
             },
             "visible": "[contains(steps('modules').modules, 'keyVaultExpiry')]"
-          },
-          {
-            "name": "kvDebug",
-            "type": "Microsoft.Common.TextBlock",
-            "visible": "[contains(steps('modules').modules, 'keyVaultExpiry')]",
-            "options": {
-              "text": "[concat('调试（临时）：', substring(string(steps('keyvault').kvApi), 0, min(600, length(string(steps('keyvault').kvApi)))))]"
-            }
           }
         ]
       }

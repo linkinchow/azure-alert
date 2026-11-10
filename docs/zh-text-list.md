@@ -375,8 +375,8 @@ Flash 的分类和级别由 `modules/m2-flash/rules.json` 按 annotationName 决
 | 324 | tooltip | 把标准事件同时写入 Log Analytics 自定义表 AzureAlertEvents_CL，便于以后统计和分析。会新建一个工作区。 |
 | 351 | 说明框 | 没有勾选 M9 Key Vault 到期提醒，这一步不需要填写，直接点"下一步"。 |
 | 360 | 说明框 | 选择要接入到期提醒的现有 Key Vault（列出当前账号能看到的所有订阅里的 Key Vault）。部署时会在每个选中的 Key Vault 上建一个事件订阅（<前缀>-kv-expiry），Event Grid 会在 Key Vault 所在资源组自动创建或复用它的系统主题，不改动 Key Vault 本身。部署人需要对这些资源组有 Event Grid 写权限（EventGrid Contributor 或 Contributor），没有权限的请不要勾选。以后新建的 Key Vault 用脚本或门户接入，点击查看说明。 |
-| 381 | label | 要接入的 Key Vault |
-| 386 | tooltip | 列出当前账号能看到的所有订阅里的 Key Vault（最多 1000 个），每项下方显示资源组和订阅 ID。可以搜索，也可以全选。 |
+| 378 | label | 要接入的 Key Vault |
+| 383 | tooltip | 列出当前账号能看到的所有订阅里的 Key Vault，每项下方显示资源组和订阅 ID。可以搜索，也可以全选。 |
 
 ---
 
