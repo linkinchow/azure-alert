@@ -21,7 +21,7 @@
 | 自监控 | Logic App `RunsFailed` 指标 | 每个 workflow 一条 metric alert，分类为 `SelfMonitor` | 随 core / 模块部署 |
 | 数据落地（可选） | — | Log Analytics 自定义表 `AzureAlertEvents_CL`（DCR + Logs Ingestion API） | `sinkEnabled=false` |
 
-部署时可以只选部分模块：门户向导里在"告警模块"一步勾选；命令行用 `modules` 参数，见[命令行部署](#命令行部署)。
+部署时可以只选部分模块：门户向导里在"告警模块"一步勾选；命令行用 `modules` 参数，见[命令行部署](#命令行部署)。以后要加模块或升级，见[添加、升级或删除模块](#添加升级或删除模块)。
 
 ## 目录
 
@@ -211,6 +211,71 @@ az deployment sub create -l eastus2 -n azure-alert -f main.bicep -p @deploy.loca
 - 验证情况（2026-11-02）：
   - 已验证：按向导输出构造参数，对 `azuredeploy.json` 执行 `az deployment sub validate` 和 `what-if` 均通过，计划创建的资源与勾选的模块一致。
   - 未验证：向导本身在门户中的显示和交互。发布前可以在门户的 [Create UI Definition Sandbox](https://portal.azure.com/#view/Microsoft_Azure_CreateUIDef/SandboxBlade) 粘贴 `ui/createUiDefinition.json` 预览；发布后再用真实按钮完整走一遍。
+
+### 添加、升级或删除模块
+
+部署完成后，想加模块（例如第一次只选了 M1–M7，后来要加 M8），或者升级到新版本，**都是再部署一次**：
+
+> **规则：使用和第一次相同的订阅、资源组名称和前缀，勾选所有需要的模块（已经部署的 + 新加的）。**
+
+为什么这样是安全的：
+
+- 部署是增量的：已有资源就地更新，不会重建，也不会重复创建。
+- Pull 模块的去重记录保存在它自己的运行历史里，重新部署不会丢，不会把旧事件再推一遍。"首次运行静默"只对新加的模块生效。
+- 新模块有时需要新版本的 Router 配合；勾选全部模块重新部署，会把已有模块和 Router 一起升级到最新版本。
+
+**方式一：门户（Deploy to Azure）**
+
+1. 再点一次本页顶部的 Deploy to Azure 按钮。
+2. 订阅、区域、**资源组名称、前缀**都填得和第一次一样。
+3. "告警模块"里勾选所有需要的模块。
+4. **重新填写默认飞书 webhook 和"按分类路由"**：这两项是加密参数，门户不会记住。"按分类路由"如果保留预填的空模板，原来分到各个群的告警会全部改发到默认群。
+5. 其他参数（订阅范围、M4 区域和阈值等）也按第一次的填写。
+
+**方式二：命令行（推荐配置较多的情况）**
+
+- 第一次部署时用的参数文件保存好，以后只改 `modules` 里的开关，再执行同样的部署命令。
+- 参数文件丢了，可以从上一次的部署记录导出（加密参数 `defaultWebhook`、`webhooks` 需要重新填写）：
+
+  ```bash
+  python scripts/export-params.py                              # 列出这个订阅里的 azure-alert 部署记录
+  python scripts/export-params.py <部署名称> > deploy.local.json  # 导出参数
+  ```
+
+  导出后补填 webhook，把新模块设为 `true`，再按[命令行部署](#命令行部署)执行。
+
+**注意：**
+
+- **资源组名称或前缀和第一次不同，会再部署出一整套告警系统**，同一事件会收到两张卡片。
+- 只勾选新模块也能部署成功（没勾的模块保持原样），但已有模块不会升级；建议始终勾选全部需要的模块。
+- **取消勾选不会删除已部署的模块**，需要手动删除，见下表。
+
+**删除模块**（`<前缀>` 默认 `aa`，`<资源组>` 默认 `rg-azure-alert`；M3 / M4 / M7 的规则在每个推送订阅的同名资源组里，每个订阅都要删）：
+
+| 模块 | 要删除的资源 |
+|---|---|
+| M1 | Logic App `<前缀>-m1-service-health`，指标告警 `<前缀>-m1-service-health-runs-failed` |
+| M2 | Logic App `<前缀>-m2-flash-vm`、`<前缀>-m2-flash-vmss`，以及各自的 `-runs-failed` 指标告警 |
+| M3 | 活动日志告警 `<前缀>-m3-resource-health` |
+| M4 | 指标告警 `<前缀>-m4-vm-cpu-<区域>`、`<前缀>-m4-vm-datadisk-bw-<区域>`（每个区域各一对） |
+| M5 | Logic App `<前缀>-m5-quota`，指标告警 `<前缀>-m5-quota-runs-failed` |
+| M6 | Logic App `<前缀>-m6-scheduled-events`，指标告警 `<前缀>-m6-scheduled-events-runs-failed` |
+| M7 | 活动日志告警 `<前缀>-m7-activity-failure` |
+| M8 | Logic App `<前缀>-m8-aks`，指标告警 `<前缀>-m8-aks-runs-failed` |
+
+```bash
+# 先列出某个模块的资源（例如 M5），确认无误再删除
+az resource list -g rg-azure-alert --query "[?starts_with(name,'aa-m5-')].{name:name,type:type}" -o table
+
+# Logic App
+az resource delete -g rg-azure-alert -n aa-m5-quota --resource-type Microsoft.Logic/workflows
+# 指标告警（自检告警、M4）
+az monitor metrics alert delete -g rg-azure-alert -n aa-m5-quota-runs-failed
+# 活动日志告警（M3、M7）
+az monitor activity-log alert delete -g rg-azure-alert -n aa-m7-activity-failure
+```
+
+删除后再部署时，把对应模块设为 `false`（门户里不勾），就不会再建出来。
 
 ## 关键实现说明
 

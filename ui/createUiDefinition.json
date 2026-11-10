@@ -15,6 +15,16 @@
     },
     "basics": [
       {
+        "name": "redeployInfo",
+        "type": "Microsoft.Common.InfoBox",
+        "visible": true,
+        "options": {
+          "style": "Warning",
+          "text": "已经部署过、这次是添加模块或升级？请使用和第一次相同的订阅、资源组名称和前缀，勾选所有需要的模块（已部署的不会重复创建），并重新填写飞书 webhook 和按分类路由（这两项不会被记住）。资源组名称或前缀不同会再部署出一整套。点击查看说明。",
+          "uri": "https://github.com/linkinchow/azure-alert#添加升级或删除模块"
+        }
+      },
+      {
         "name": "resourceGroupName",
         "type": "Microsoft.Common.TextBox",
         "label": "中心资源组名称",

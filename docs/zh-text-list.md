@@ -312,64 +312,65 @@ Flash 的分类和级别由 `modules/m2-flash/rules.json` 按 annotationName 决
 |---|---|---|
 | 9 | 说明 | **azure-alert**：把 Azure 平台事件（Service Health、Project Flash、Resource Health、Metric、Quota、AKS 等）统一推送到飞书。 |
 | 11 | label | 中心资源组区域 |
-| 20 | label | 中心资源组名称 |
-| 25 | 校验提示 | 1-90 个字母、数字、-、_、.、() |
-| 27 | tooltip | 告警系统自身的资源（托管身份、Router、各模块 Logic App、Action Group）都建在这个资源组里，不存在会自动创建。 |
-| 32 | label | 资源名前缀 |
-| 37 | 校验提示 | 2-10 个小写字母、数字或 -，以字母开头 |
-| 39 | tooltip | 所有资源名的前缀，例如 aa-router、aa-m1-service-health。同一订阅里部署多套时用不同前缀区分。 |
-| 45 | 步骤 | 告警模块 |
-| 50 | label | 要部署的告警模块 |
-| 51 | tooltip | 默认全选。M3 / M4 / M7 会在"范围与权限"一步选择的订阅里建告警规则；其余模块通过 Azure Resource Graph 轮询。 |
-| 51 | 步骤 | 范围与权限 |
-| 84 | 选项 | M1 服务健康 |
-| 85 | 选项说明 | 服务问题、计划内维护、健康公告、安全公告、账单通知。每分钟查询一次 Azure Resource Graph。 |
-| 89 | 选项 | M2 Project Flash（VM / VMSS 平台事件） |
-| 90 | 选项说明 | 主机故障、硬件降级、热迁移、计划内冻结 / 维护、虚拟机崩溃、存储断连、预配超时、Spot 抢占。VM 和 VMSS 各一个 Logic App。 |
-| 94 | 选项 | M3 资源健康（全资源类型） |
-| 95 | 选项说明 | 所有资源类型的平台发起的不可用 / 降级（活动日志 level 为 Critical）。在每个选中的订阅里建一条活动日志告警规则。 |
-| 99 | 选项 | M4 指标示例（CPU、数据盘带宽） |
-| 100 | 选项说明 | 多资源指标告警示例：VM CPU 使用率、数据盘带宽使用率，阈值在"范围与权限"一步设置。每个区域一条规则。 |
-| 104 | 选项 | M5 计算配额 |
-| 105 | 选项说明 | 计算配额使用率达到 80% / 90% / 95% 时提醒。 |
-| 109 | 选项 | M6 计划事件（需先决条件） |
-| 110 | 选项说明 | VM / VMSS 维护的事前通知（重启、重新部署、冻结、抢占、终止）。订阅和 VM 需要先满足先决条件，见 modules/m6-scheduled-events/README.md。 |
-| 114 | 选项 | M7 资源操作失败 |
-| 115 | 选项说明 | 所有资源、所有操作中 level 为 Error / Critical 的失败（容量不足、配额不足、策略拒绝等会自动归类）。自动化调用多的环境量可能很大。 |
-| 119 | 选项 | M8 AKS 升级与版本到期 |
-| 120 | 选项说明 | AKS 自动升级的计划和失败、Kubernetes 版本即将到期 / 已超出支持期。 |
-| 132 | 步骤 | 飞书通知 |
-| 138 | label | 默认飞书 webhook |
-| 139 | label | 再次输入默认飞书 webhook（不显示） |
-| 144 | 校验提示 | 请输入飞书 / Lark 自定义机器人 webhook |
-| 149 | tooltip | 飞书群自定义机器人的 webhook 地址。没有在"按分类路由"里单独指定的告警都发到这里。 |
-| 157 | 说明框 | 想把不同告警发到不同的飞书群，就在下面对应的分类后面填上该群的 webhook，不填的发到上面的默认 webhook。ServiceHealth = M1 服务健康，Flash = M2 VM 平台事件，ResourceHealth = M3 资源健康，Metric = M4 指标，Quota = M5 配额，ScheduledEvent = M6 计划事件，ActivityFailure = M7 操作失败，AKS = M8 AKS，SelfMonitor = 告警系统自检。点击查看完整说明和示例。 |
-| 164 | label | 按分类路由（可选） |
-| 165 | tooltip | 留空的分类发到默认 webhook。要把某个小类单独发到一个群，可以再加一行，例如 "Flash.HostFailure": "https://..."；完整分类名优先于模块前缀。[完整说明和示例](https://github.com/linkinchow/azure-alert#多个飞书群按分类路由) |
-| 171 | 校验提示 | 请输入 JSON 对象：键用英文双引号，最后一项后面不要加逗号 |
-| 191 | label | ARG 读取权限（Reader）授予方式 |
-| 192 | 选项 | 按订阅授予 |
-| 200 | 选项 | 不授予（部署后用 scripts/grant-reader-mg.sh 在管理组上授予） |
-| 205 | tooltip | Pull 模块（M1 / M2 / M5 / M6 / M8）需要对被监控的订阅有 Reader 权限。按订阅授予会在每个选中的订阅上授予；也可以部署后在管理组上统一授予。 |
-| 210 | label | 要告警的订阅（Pull 模块读取范围，授予 Reader） |
-| 219 | tooltip | 这些订阅会给告警托管身份授予 Reader，Pull 模块只读取这些订阅。 |
-| 224 | label | 排除的订阅（可选） |
-| 233 | tooltip | 在管理组上授权时，管理组下不想告警的订阅。 |
-| 238 | label | 部署 M3 / M4 / M7 告警规则的订阅 |
-| 247 | tooltip | M3 / M4 / M7 的告警规则会建在这些订阅里，监控整个订阅。 |
-| 252 | label | M4 metric 规则的区域（逗号分隔，例如 eastus2,westus3） |
-| 257 | 校验提示 | 区域名用逗号分隔，例如 eastus2,westus3 |
-| 259 | tooltip | M4 指标规则按区域创建，多个区域用逗号分隔，例如 eastus2,westus3。 |
-| 264 | label | M4 CPU 告警阈值（%，5 分钟平均） |
-| 266 | tooltip | 平台 CPU 指标在部分规格上到不了 100%（实测 D2s_v5 最高 83.3%），建议 80。 |
-| 270 | 校验提示 | 1-100 的整数 |
-| 276 | label | M4 数据盘带宽使用率告警阈值（%，5 分钟平均） |
-| 287 | label | 首次运行静默（不推送历史事件） |
-| 288 | 选项 | 是 |
-| 289 | tooltip | 建议勾选：首次运行只记录当前已有的事件，不把历史事件一次性推进群。 |
-| 297 | 选项 | 否 |
-| 307 | label | 事件落地到 Log Analytics 自定义表 AzureAlertEvents_CL |
-| 309 | tooltip | 把标准事件同时写入 Log Analytics 自定义表 AzureAlertEvents_CL，便于以后统计和分析。会新建一个工作区。 |
+| 23 | 说明框 | 已经部署过、这次是添加模块或升级？请使用和第一次相同的订阅、资源组名称和前缀，勾选所有需要的模块（已部署的不会重复创建），并重新填写飞书 webhook 和按分类路由（这两项不会被记住）。资源组名称或前缀不同会再部署出一整套。点击查看说明。 |
+| 23 | 选项 | 是 |
+| 30 | label | 中心资源组名称 |
+| 35 | 校验提示 | 1-90 个字母、数字、-、_、.、() |
+| 37 | tooltip | 告警系统自身的资源（托管身份、Router、各模块 Logic App、Action Group）都建在这个资源组里，不存在会自动创建。 |
+| 42 | label | 资源名前缀 |
+| 47 | 校验提示 | 2-10 个小写字母、数字或 -，以字母开头 |
+| 49 | tooltip | 所有资源名的前缀，例如 aa-router、aa-m1-service-health。同一订阅里部署多套时用不同前缀区分。 |
+| 55 | 步骤 | 告警模块 |
+| 60 | label | 要部署的告警模块 |
+| 61 | tooltip | 默认全选。M3 / M4 / M7 会在"范围与权限"一步选择的订阅里建告警规则；其余模块通过 Azure Resource Graph 轮询。 |
+| 61 | 步骤 | 范围与权限 |
+| 94 | 选项 | M1 服务健康 |
+| 95 | 选项说明 | 服务问题、计划内维护、健康公告、安全公告、账单通知。每分钟查询一次 Azure Resource Graph。 |
+| 99 | 选项 | M2 Project Flash（VM / VMSS 平台事件） |
+| 100 | 选项说明 | 主机故障、硬件降级、热迁移、计划内冻结 / 维护、虚拟机崩溃、存储断连、预配超时、Spot 抢占。VM 和 VMSS 各一个 Logic App。 |
+| 104 | 选项 | M3 资源健康（全资源类型） |
+| 105 | 选项说明 | 所有资源类型的平台发起的不可用 / 降级（活动日志 level 为 Critical）。在每个选中的订阅里建一条活动日志告警规则。 |
+| 109 | 选项 | M4 指标示例（CPU、数据盘带宽） |
+| 110 | 选项说明 | 多资源指标告警示例：VM CPU 使用率、数据盘带宽使用率，阈值在"范围与权限"一步设置。每个区域一条规则。 |
+| 114 | 选项 | M5 计算配额 |
+| 115 | 选项说明 | 计算配额使用率达到 80% / 90% / 95% 时提醒。 |
+| 119 | 选项 | M6 计划事件（需先决条件） |
+| 120 | 选项说明 | VM / VMSS 维护的事前通知（重启、重新部署、冻结、抢占、终止）。订阅和 VM 需要先满足先决条件，见 modules/m6-scheduled-events/README.md。 |
+| 124 | 选项 | M7 资源操作失败 |
+| 125 | 选项说明 | 所有资源、所有操作中 level 为 Error / Critical 的失败（容量不足、配额不足、策略拒绝等会自动归类）。自动化调用多的环境量可能很大。 |
+| 129 | 选项 | M8 AKS 升级与版本到期 |
+| 130 | 选项说明 | AKS 自动升级的计划和失败、Kubernetes 版本即将到期 / 已超出支持期。 |
+| 142 | 步骤 | 飞书通知 |
+| 148 | label | 默认飞书 webhook |
+| 149 | label | 再次输入默认飞书 webhook（不显示） |
+| 154 | 校验提示 | 请输入飞书 / Lark 自定义机器人 webhook |
+| 159 | tooltip | 飞书群自定义机器人的 webhook 地址。没有在"按分类路由"里单独指定的告警都发到这里。 |
+| 167 | 说明框 | 想把不同告警发到不同的飞书群，就在下面对应的分类后面填上该群的 webhook，不填的发到上面的默认 webhook。ServiceHealth = M1 服务健康，Flash = M2 VM 平台事件，ResourceHealth = M3 资源健康，Metric = M4 指标，Quota = M5 配额，ScheduledEvent = M6 计划事件，ActivityFailure = M7 操作失败，AKS = M8 AKS，SelfMonitor = 告警系统自检。点击查看完整说明和示例。 |
+| 174 | label | 按分类路由（可选） |
+| 175 | tooltip | 留空的分类发到默认 webhook。要把某个小类单独发到一个群，可以再加一行，例如 "Flash.HostFailure": "https://..."；完整分类名优先于模块前缀。[完整说明和示例](https://github.com/linkinchow/azure-alert#多个飞书群按分类路由) |
+| 181 | 校验提示 | 请输入 JSON 对象：键用英文双引号，最后一项后面不要加逗号 |
+| 201 | label | ARG 读取权限（Reader）授予方式 |
+| 202 | 选项 | 按订阅授予 |
+| 210 | 选项 | 不授予（部署后用 scripts/grant-reader-mg.sh 在管理组上授予） |
+| 215 | tooltip | Pull 模块（M1 / M2 / M5 / M6 / M8）需要对被监控的订阅有 Reader 权限。按订阅授予会在每个选中的订阅上授予；也可以部署后在管理组上统一授予。 |
+| 220 | label | 要告警的订阅（Pull 模块读取范围，授予 Reader） |
+| 229 | tooltip | 这些订阅会给告警托管身份授予 Reader，Pull 模块只读取这些订阅。 |
+| 234 | label | 排除的订阅（可选） |
+| 243 | tooltip | 在管理组上授权时，管理组下不想告警的订阅。 |
+| 248 | label | 部署 M3 / M4 / M7 告警规则的订阅 |
+| 257 | tooltip | M3 / M4 / M7 的告警规则会建在这些订阅里，监控整个订阅。 |
+| 262 | label | M4 metric 规则的区域（逗号分隔，例如 eastus2,westus3） |
+| 267 | 校验提示 | 区域名用逗号分隔，例如 eastus2,westus3 |
+| 269 | tooltip | M4 指标规则按区域创建，多个区域用逗号分隔，例如 eastus2,westus3。 |
+| 274 | label | M4 CPU 告警阈值（%，5 分钟平均） |
+| 276 | tooltip | 平台 CPU 指标在部分规格上到不了 100%（实测 D2s_v5 最高 83.3%），建议 80。 |
+| 280 | 校验提示 | 1-100 的整数 |
+| 286 | label | M4 数据盘带宽使用率告警阈值（%，5 分钟平均） |
+| 297 | label | 首次运行静默（不推送历史事件） |
+| 299 | tooltip | 建议勾选：首次运行只记录当前已有的事件，不把历史事件一次性推进群。 |
+| 307 | 选项 | 否 |
+| 317 | label | 事件落地到 Log Analytics 自定义表 AzureAlertEvents_CL |
+| 319 | tooltip | 把标准事件同时写入 Log Analytics 自定义表 AzureAlertEvents_CL，便于以后统计和分析。会新建一个工作区。 |
 
 ---
 
