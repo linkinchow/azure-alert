@@ -297,7 +297,7 @@ python scripts/remove-module.py --prefix aa --resource-group rg-azure-alert --mo
   - 已通知的指纹保存在 Logic App **自己的运行历史**里（`State_out` 动作的输出），下一次运行通过 ARM 读取上一次成功运行的结果。
   - 不需要额外的 Storage 资源和授权。（Storage 关闭公网访问时，Consumption Logic App 仍可通过"受信任的 Azure 服务"例外访问，但要额外授予 Blob 数据角色，所以没有采用。）
 - **重复告警降频**：Push 告警（M3 / M7）没有可以复用的运行历史状态，所以单独用一张存储表保存每个告警的计数和时间。
-  - 存储账户不开放公网访问，禁用访问密钥；Router 用托管身份通过"受信任的 Azure 服务"例外读写。
+  - 存储账户公网访问已禁用、禁用访问密钥，只用一条资源实例规则放行 Router 这一个资源；Router 用自己的系统分配托管身份读写。
   - 读写失败时照常发送，不会漏告警。规则和配置见 [docs/repeat-suppression.md](docs/repeat-suppression.md)。
 - **ARG 限制**（实现时踩到的）：
   - 不支持 `let`、`datatable`。

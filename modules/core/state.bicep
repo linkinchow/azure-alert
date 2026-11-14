@@ -1,15 +1,20 @@
-// Alert state for the Router: repeat suppression (and the mute list) in an Azure Storage table.
-// The Router reads and writes the table with the managed identity (Entra ID); shared keys are disabled.
-// No public network access: Logic Apps reach the account through the "trusted Azure services" exception
-// (bypass AzureServices), which works with publicNetworkAccess Disabled and a managed identity.
+// Alert state for the Router: repeat suppression in an Azure Storage table.
+// The Router reads and writes the table with its system-assigned managed identity (Entra ID); shared keys are disabled.
+// No public network access, no "trusted Azure services" exception: a resource instance rule lets only the Router
+// (Microsoft.Logic/workflows <prefix>-router) reach the account. Resource instance rules are documented for the
+// resource's system-assigned identity, so the table calls use that identity, not the shared user-assigned one.
 targetScope = 'resourceGroup'
 
-param prefix string
+param accountName string
 param location string = resourceGroup().location
 param tags object = {}
-param identityPrincipalId string
 
-var accountName = '${take(toLower(replace(replace(prefix, '-', ''), '_', '')), 9)}st${uniqueString(resourceGroup().id, prefix)}'
+@description('Principal ID of the Router system-assigned managed identity.')
+param routerPrincipalId string
+
+@description('Resource ID of the Router workflow, the only resource allowed through the network rules.')
+param routerId string
+
 var tableName = 'alertstate'
 
 resource account 'Microsoft.Storage/storageAccounts@2024-01-01' = {
@@ -28,9 +33,15 @@ resource account 'Microsoft.Storage/storageAccounts@2024-01-01' = {
     publicNetworkAccess: 'Disabled'
     networkAcls: {
       defaultAction: 'Deny'
-      bypass: 'AzureServices'
+      bypass: 'None'
       ipRules: []
       virtualNetworkRules: []
+      resourceAccessRules: [
+        {
+          tenantId: tenant().tenantId
+          resourceId: routerId
+        }
+      ]
     }
     defaultToOAuthAuthentication: true
   }
@@ -48,14 +59,13 @@ resource table 'Microsoft.Storage/storageAccounts/tableServices/tables@2024-01-0
 
 // Storage Table Data Contributor, on this account only.
 resource tableWriter 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(account.id, identityPrincipalId, '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')
+  name: guid(account.id, routerPrincipalId, '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')
   scope: account
   properties: {
-    principalId: identityPrincipalId
+    principalId: routerPrincipalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')
   }
 }
 
 output tableUrl string = '${account.properties.primaryEndpoints.table}${tableName}'
-output accountName string = account.name

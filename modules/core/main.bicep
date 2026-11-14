@@ -129,13 +129,17 @@ var defaultRepeatSuppression = {
 }
 var suppression = union(defaultRepeatSuppression, repeatSuppression)
 
+var stateAccountName = '${take(toLower(replace(replace(prefix, '-', ''), '_', '')), 9)}st${uniqueString(resourceGroup().id, prefix)}'
+var stateTableUrl = 'https://${stateAccountName}.table.${environment().suffixes.storage}/alertstate'
+
 module state 'state.bicep' = if (suppression.enabled) {
   name: '${prefix}-state'
   params: {
-    prefix: prefix
+    accountName: stateAccountName
     location: location
     tags: tags
-    identityPrincipalId: identity.properties.principalId
+    routerPrincipalId: router.identity.principalId
+    routerId: router.id
   }
 }
 
@@ -143,8 +147,9 @@ resource router 'Microsoft.Logic/workflows@2019-05-01' = {
   name: '${prefix}-router'
   location: location
   tags: tags
+  // User-assigned: ARG, run history, sink. System-assigned: the state table only (see state.bicep).
   identity: {
-    type: 'UserAssigned'
+    type: 'SystemAssigned, UserAssigned'
     userAssignedIdentities: {
       '${identity.id}': {}
     }
@@ -166,7 +171,7 @@ resource router 'Microsoft.Logic/workflows@2019-05-01' = {
         value: suppression
       }
       stateTableUrl: {
-        value: suppression.enabled ? state!.outputs.tableUrl : ''
+        value: suppression.enabled ? stateTableUrl : ''
       }
       categoryNames: {
         value: union(defaultCategoryNames, categoryNames)
@@ -220,5 +225,5 @@ output identityId string = identity.id
 output identityPrincipalId string = identity.properties.principalId
 output routerName string = router.name
 output actionGroupId string = actionGroup.id
-output stateAccountName string = suppression.enabled ? state!.outputs.accountName : ''
+output stateAccountName string = suppression.enabled ? stateAccountName : ''
 output sinkWorkspaceId string = sinkEnabled ? sink!.outputs.workspaceId : ''

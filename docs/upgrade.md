@@ -45,7 +45,7 @@ az deployment sub create -l <区域> -n azure-alert -f main.bicep -p @upgrade.lo
 1. 部署状态是"成功"。
 2. 中心资源组里能看到：
    - Logic App `<前缀>-router`（已更新）；
-   - 新的存储账户 `<前缀>st…`（重复告警降频用），"网络"里公网访问是"已禁用"；
+   - 新的存储账户 `<前缀>st…`（重复告警降频用）："网络"里公网访问是"已禁用"，资源实例里只有 `<前缀>-router`；
    - 每个推送订阅里多一条活动日志告警 `<前缀>-m3-resource-health-recovery`（勾了 M3 时）。
 3. 之后的第一张卡片照常到达飞书群。如果有正在反复出现的告警，升级后它还会再发 2 次，然后进入每天最多一次。
 
@@ -53,7 +53,7 @@ az deployment sub create -l <区域> -n azure-alert -f main.bicep -p @upgrade.lo
 
 | 日期 | 变化 | 对已部署客户的影响 |
 |---|---|---|
-| 2026-11-14 | **重复告警降频**（M3 / M7）：同一告警 24 小时内前 2 次照发，之后每天、每周、每月最多一张；**M3 "已恢复"卡片**。见 [repeat-suppression.md](repeat-suppression.md) | 新增一个不开放公网的存储账户、一个角色分配、每个推送订阅一条 M3 恢复规则。不想要可以在向导里关闭，或参数 `repeatSuppression = { "enabled": false }` |
+| 2026-11-14 | **重复告警降频**（M3 / M7）：同一告警 24 小时内前 2 次照发，之后每天、每周、每月最多一张；**M3 "已恢复"卡片**。见 [repeat-suppression.md](repeat-suppression.md) | 新增一个不开放公网的存储账户（只放行 Router）、Router 的系统分配身份和它在这个存储账户上的一个角色分配、每个推送订阅一条 M3 恢复规则。不想要可以在向导里关闭，或参数 `repeatSuppression = { "enabled": false }` |
 | 2026-11-10 | M3 / M7 卡片的"时间"改为事件实际发生的时间（原来是告警触发时间，晚 5～30 分钟） | 无需操作 |
 | 2026-11-10 | 新增 **M9 Key Vault 到期提醒**（证书、机密、密钥），见 [keyvault-expiry.md](keyvault-expiry.md) | 默认不选。要用的话升级时勾选并选择 Key Vault，或升级后用脚本接入 |
 | 2026-11-10 | M6 前提脚本：不再修改 AKS 节点池等平台托管的资源；可用性集改为在集合上开启 | 只影响脚本，无需重新部署 |

@@ -404,7 +404,6 @@
                 },
                 "authentication": {
                   "type": "ManagedServiceIdentity",
-                  "identity": "@parameters('miId')",
                   "audience": "https://storage.azure.com/"
                 }
               },
@@ -532,7 +531,6 @@
                     },
                     "authentication": {
                       "type": "ManagedServiceIdentity",
-                      "identity": "@parameters('miId')",
                       "audience": "https://storage.azure.com/"
                     },
                     "body": {
@@ -565,7 +563,6 @@
                     },
                     "authentication": {
                       "type": "ManagedServiceIdentity",
-                      "identity": "@parameters('miId')",
                       "audience": "https://storage.azure.com/"
                     },
                     "body": {
@@ -654,7 +651,6 @@
                           },
                           "authentication": {
                             "type": "ManagedServiceIdentity",
-                            "identity": "@parameters('miId')",
                             "audience": "https://storage.azure.com/"
                           },
                           "body": "@setProperty(setProperty(outputs('Rs_prev'), 'notify', false), 'recoveredAt', outputs('Rs_now'))"

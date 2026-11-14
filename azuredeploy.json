@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "11538694709914966738"
+      "templateHash": "10256125990552173574"
     }
   },
   "parameters": {
@@ -269,7 +269,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "2509805822472949807"
+              "templateHash": "559881187298547592"
             }
           },
           "parameters": {
@@ -754,7 +754,6 @@
                             },
                             "authentication": {
                               "type": "ManagedServiceIdentity",
-                              "identity": "@parameters('miId')",
                               "audience": "https://storage.azure.com/"
                             }
                           },
@@ -882,7 +881,6 @@
                                 },
                                 "authentication": {
                                   "type": "ManagedServiceIdentity",
-                                  "identity": "@parameters('miId')",
                                   "audience": "https://storage.azure.com/"
                                 },
                                 "body": {
@@ -915,7 +913,6 @@
                                 },
                                 "authentication": {
                                   "type": "ManagedServiceIdentity",
-                                  "identity": "@parameters('miId')",
                                   "audience": "https://storage.azure.com/"
                                 },
                                 "body": {
@@ -1004,7 +1001,6 @@
                                       },
                                       "authentication": {
                                         "type": "ManagedServiceIdentity",
-                                        "identity": "@parameters('miId')",
                                         "audience": "https://storage.azure.com/"
                                       },
                                       "body": "@setProperty(setProperty(outputs('Rs_prev'), 'notify', false), 'recoveredAt', outputs('Rs_now'))"
@@ -1894,7 +1890,9 @@
               "weeklyWeeks": 4,
               "quietDays": 3
             },
-            "suppression": "[union(variables('defaultRepeatSuppression'), parameters('repeatSuppression'))]"
+            "suppression": "[union(variables('defaultRepeatSuppression'), parameters('repeatSuppression'))]",
+            "stateAccountName": "[format('{0}st{1}', take(toLower(replace(replace(parameters('prefix'), '-', ''), '_', '')), 9), uniqueString(resourceGroup().id, parameters('prefix')))]",
+            "stateTableUrl": "[format('https://{0}.table.{1}/alertstate', variables('stateAccountName'), environment().suffixes.storage)]"
           },
           "resources": [
             {
@@ -1924,7 +1922,7 @@
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
               "identity": {
-                "type": "UserAssigned",
+                "type": "SystemAssigned, UserAssigned",
                 "userAssignedIdentities": {
                   "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('prefix'))))]": {}
                 }
@@ -1946,7 +1944,7 @@
                     "value": "[variables('suppression')]"
                   },
                   "stateTableUrl": {
-                    "value": "[if(variables('suppression').enabled, reference(resourceId('Microsoft.Resources/deployments', format('{0}-state', parameters('prefix'))), '2025-04-01').outputs.tableUrl.value, '')]"
+                    "value": "[if(variables('suppression').enabled, variables('stateTableUrl'), '')]"
                   },
                   "categoryNames": {
                     "value": "[union(variables('defaultCategoryNames'), parameters('categoryNames'))]"
@@ -1967,8 +1965,7 @@
               },
               "dependsOn": [
                 "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('prefix')))]",
-                "[resourceId('Microsoft.Resources/deployments', format('{0}-sink', parameters('prefix')))]",
-                "[resourceId('Microsoft.Resources/deployments', format('{0}-state', parameters('prefix')))]"
+                "[resourceId('Microsoft.Resources/deployments', format('{0}-sink', parameters('prefix')))]"
               ]
             },
             {
@@ -2233,8 +2230,8 @@
                 },
                 "mode": "Incremental",
                 "parameters": {
-                  "prefix": {
-                    "value": "[parameters('prefix')]"
+                  "accountName": {
+                    "value": "[variables('stateAccountName')]"
                   },
                   "location": {
                     "value": "[parameters('location')]"
@@ -2242,8 +2239,11 @@
                   "tags": {
                     "value": "[parameters('tags')]"
                   },
-                  "identityPrincipalId": {
-                    "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('prefix'))), '2024-11-30').principalId]"
+                  "routerPrincipalId": {
+                    "value": "[reference(resourceId('Microsoft.Logic/workflows', format('{0}-router', parameters('prefix'))), '2019-05-01', 'full').identity.principalId]"
+                  },
+                  "routerId": {
+                    "value": "[resourceId('Microsoft.Logic/workflows', format('{0}-router', parameters('prefix')))]"
                   }
                 },
                 "template": {
@@ -2253,11 +2253,11 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.44.1.10279",
-                      "templateHash": "8278845848970211081"
+                      "templateHash": "9291248734753630605"
                     }
                   },
                   "parameters": {
-                    "prefix": {
+                    "accountName": {
                       "type": "string"
                     },
                     "location": {
@@ -2268,19 +2268,27 @@
                       "type": "object",
                       "defaultValue": {}
                     },
-                    "identityPrincipalId": {
-                      "type": "string"
+                    "routerPrincipalId": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Principal ID of the Router system-assigned managed identity."
+                      }
+                    },
+                    "routerId": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Resource ID of the Router workflow, the only resource allowed through the network rules."
+                      }
                     }
                   },
                   "variables": {
-                    "accountName": "[format('{0}st{1}', take(toLower(replace(replace(parameters('prefix'), '-', ''), '_', '')), 9), uniqueString(resourceGroup().id, parameters('prefix')))]",
                     "tableName": "alertstate"
                   },
                   "resources": [
                     {
                       "type": "Microsoft.Storage/storageAccounts",
                       "apiVersion": "2024-01-01",
-                      "name": "[variables('accountName')]",
+                      "name": "[parameters('accountName')]",
                       "location": "[parameters('location')]",
                       "tags": "[parameters('tags')]",
                       "kind": "StorageV2",
@@ -2295,9 +2303,15 @@
                         "publicNetworkAccess": "Disabled",
                         "networkAcls": {
                           "defaultAction": "Deny",
-                          "bypass": "AzureServices",
+                          "bypass": "None",
                           "ipRules": [],
-                          "virtualNetworkRules": []
+                          "virtualNetworkRules": [],
+                          "resourceAccessRules": [
+                            {
+                              "tenantId": "[tenant().tenantId]",
+                              "resourceId": "[parameters('routerId')]"
+                            }
+                          ]
                         },
                         "defaultToOAuthAuthentication": true
                       }
@@ -2305,48 +2319,44 @@
                     {
                       "type": "Microsoft.Storage/storageAccounts/tableServices",
                       "apiVersion": "2024-01-01",
-                      "name": "[format('{0}/{1}', variables('accountName'), 'default')]",
+                      "name": "[format('{0}/{1}', parameters('accountName'), 'default')]",
                       "dependsOn": [
-                        "[resourceId('Microsoft.Storage/storageAccounts', variables('accountName'))]"
+                        "[resourceId('Microsoft.Storage/storageAccounts', parameters('accountName'))]"
                       ]
                     },
                     {
                       "type": "Microsoft.Storage/storageAccounts/tableServices/tables",
                       "apiVersion": "2024-01-01",
-                      "name": "[format('{0}/{1}/{2}', variables('accountName'), 'default', variables('tableName'))]",
+                      "name": "[format('{0}/{1}/{2}', parameters('accountName'), 'default', variables('tableName'))]",
                       "dependsOn": [
-                        "[resourceId('Microsoft.Storage/storageAccounts/tableServices', variables('accountName'), 'default')]"
+                        "[resourceId('Microsoft.Storage/storageAccounts/tableServices', parameters('accountName'), 'default')]"
                       ]
                     },
                     {
                       "type": "Microsoft.Authorization/roleAssignments",
                       "apiVersion": "2022-04-01",
-                      "scope": "[resourceId('Microsoft.Storage/storageAccounts', variables('accountName'))]",
-                      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('accountName')), parameters('identityPrincipalId'), '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')]",
+                      "scope": "[resourceId('Microsoft.Storage/storageAccounts', parameters('accountName'))]",
+                      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', parameters('accountName')), parameters('routerPrincipalId'), '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')]",
                       "properties": {
-                        "principalId": "[parameters('identityPrincipalId')]",
+                        "principalId": "[parameters('routerPrincipalId')]",
                         "principalType": "ServicePrincipal",
                         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')]"
                       },
                       "dependsOn": [
-                        "[resourceId('Microsoft.Storage/storageAccounts', variables('accountName'))]"
+                        "[resourceId('Microsoft.Storage/storageAccounts', parameters('accountName'))]"
                       ]
                     }
                   ],
                   "outputs": {
                     "tableUrl": {
                       "type": "string",
-                      "value": "[format('{0}{1}', reference(resourceId('Microsoft.Storage/storageAccounts', variables('accountName')), '2024-01-01').primaryEndpoints.table, variables('tableName'))]"
-                    },
-                    "accountName": {
-                      "type": "string",
-                      "value": "[variables('accountName')]"
+                      "value": "[format('{0}{1}', reference(resourceId('Microsoft.Storage/storageAccounts', parameters('accountName')), '2024-01-01').primaryEndpoints.table, variables('tableName'))]"
                     }
                   }
                 }
               },
               "dependsOn": [
-                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-mi', parameters('prefix')))]"
+                "[resourceId('Microsoft.Logic/workflows', format('{0}-router', parameters('prefix')))]"
               ]
             },
             {
@@ -2463,7 +2473,7 @@
             },
             "stateAccountName": {
               "type": "string",
-              "value": "[if(variables('suppression').enabled, reference(resourceId('Microsoft.Resources/deployments', format('{0}-state', parameters('prefix'))), '2025-04-01').outputs.accountName.value, '')]"
+              "value": "[if(variables('suppression').enabled, variables('stateAccountName'), '')]"
             },
             "sinkWorkspaceId": {
               "type": "string",
