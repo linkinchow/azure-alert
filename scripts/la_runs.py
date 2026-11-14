@@ -61,15 +61,23 @@ def sent(n, router=os.environ.get("AA_ROUTER", "aa-router")):
         print(r["properties"]["startTime"][:19], "run", r["properties"]["status"])
         try:
             cards = get(f"{BASE}/{router}/runs/{r['name']}/actions/Card/repetitions")["value"]
-            posts = {p["name"]: p for p in get(f"{BASE}/{router}/runs/{r['name']}/actions/Post_card/repetitions")["value"]}
-        except Exception as e:  # run without events
-            print("  (no cards)", e)
+        except Exception:  # no events, or every event suppressed
+            print("  (no cards)")
             continue
+        try:
+            posts = get(f"{BASE}/{router}/runs/{r['name']}/actions/Post_message/repetitions")["value"]
+        except Exception:
+            posts = []
         for c in sorted(cards, key=lambda x: x["name"]):
+            if not c["properties"].get("outputsLink"):  # suppressed (not sent)
+                print("  (suppressed)", c["properties"]["status"])
+                continue
             card = fetch_link(c["properties"]["outputsLink"])["card"]
-            post = posts.get(c["name"])
+            post = next((p for p in posts if p["name"].startswith(c["name"])), None)
             resp = fetch_link(post["properties"]["outputsLink"]).get("body") if post and post["properties"].get("outputsLink") else None
-            print(" ", card["header"]["template"], card["header"]["title"]["content"][:110], "->", json.dumps(resp, ensure_ascii=False)[:80])
+            body = card["elements"][0]["text"]["content"].splitlines()[0]
+            print(" ", card["header"]["template"], card["header"]["title"]["content"][:110], "->", json.dumps(resp, ensure_ascii=False)[:60])
+            print("    ", body[:160])
 
 
 def output(workflow, action, n):

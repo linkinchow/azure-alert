@@ -33,6 +33,16 @@
     "feishuMaxAttempts": {
       "type": "Int",
       "defaultValue": 8
+    },
+    "repeatSuppression": {
+      "type": "Object",
+      "defaultValue": {
+        "enabled": false
+      }
+    },
+    "stateTableUrl": {
+      "type": "String",
+      "defaultValue": ""
     }
   },
   "triggers": {
@@ -170,7 +180,7 @@
         },
         "category": "@{if(equals(outputs('Alert_category'), 'ActivityFailure'), concat('ActivityFailure.', outputs('Activity_class')), outputs('Alert_category'))}",
         "severity": "@{if(equals(outputs('Alert_category'), 'ActivityFailure'), if(contains(createArray('Capacity', 'Quota'), outputs('Activity_class')), 'Warning', if(equals(outputs('Body_obj')?['data']?['alertContext']?['level'], 'Critical'), 'Critical', if(equals(outputs('Body_obj')?['data']?['alertContext']?['level'], 'Error'), 'Warning', 'Informational'))), if(equals(outputs('Alert_category'), 'ResourceHealth'), if(contains(createArray('Critical', 'Error'), outputs('Body_obj')?['data']?['alertContext']?['level']), 'Critical', if(equals(outputs('Body_obj')?['data']?['alertContext']?['level'], 'Warning'), 'Warning', 'Informational')), if(contains(createArray('Sev0', 'Sev1'), outputs('Body_obj')?['data']?['essentials']?['severity']), 'Critical', if(equals(outputs('Body_obj')?['data']?['essentials']?['severity'], 'Sev2'), 'Warning', 'Informational'))))}",
-        "status": "@{if(equals(outputs('Body_obj')?['data']?['essentials']?['monitorCondition'], 'Resolved'), 'Resolved', 'New')}",
+        "status": "@{if(or(equals(outputs('Body_obj')?['data']?['essentials']?['monitorCondition'], 'Resolved'), and(equals(outputs('Alert_category'), 'ResourceHealth'), equals(outputs('Body_obj')?['data']?['alertContext']?['status'], 'Resolved'))), 'Resolved', 'New')}",
         "initiator": "@{if(equals(outputs('Body_obj')?['data']?['alertContext']?['properties']?['cause'], 'PlatformInitiated'), 'Platform', if(equals(outputs('Body_obj')?['data']?['alertContext']?['properties']?['cause'], 'UserInitiated'), 'Customer', 'Unknown'))}",
         "title": "@{if(not(empty(first(coalesce(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName'])), concat(outputs('Alert_target_parts')[8], ' ', outputs('Metric_name_cn'), ' ', outputs('Metric_value'), if(contains(string(first(coalesce(outputs('Body_obj')?['data']?['alertContext']?['condition']?['allOf'], json('[]')))?['metricName']), 'Percentage'), '%', '')), if(not(empty(outputs('Body_obj')?['data']?['alertContext']?['properties']?['currentHealthStatus'])), concat(outputs('Alert_target_parts')[8], '：', coalesce(outputs('Body_obj')?['data']?['alertContext']?['properties']?['title'], outputs('Body_obj')?['data']?['alertContext']?['properties']?['currentHealthStatus'])), if(equals(outputs('Alert_category'), 'ActivityFailure'), concat(outputs('Alert_target_parts')[8], '：', outputs('Operation_cn'), ' 失败'), concat(coalesce(outputs('Body_obj')?['data']?['essentials']?['alertRule'], 'Azure Monitor 告警'), if(empty(outputs('Alert_target_parts')[8]), '', concat('：', outputs('Alert_target_parts')[8]))))))}",
         "summary": "@{outputs('Alert_summary')}",
@@ -293,295 +303,299 @@
         }
       },
       "actions": {
-        "Webhook": {
-          "type": "Compose",
-          "inputs": "@coalesce(parameters('webhooks')?[coalesce(items('For_each_event')?['category'], '-')], parameters('webhooks')?[first(split(coalesce(items('For_each_event')?['category'], '-'), '.'))], parameters('webhooks')?['default'], '')",
+        "Rs_reset": {
+          "type": "SetVariable",
+          "inputs": {
+            "name": "rs",
+            "value": {
+              "send": true,
+              "note": "",
+              "repeat": false,
+              "title": ""
+            }
+          },
           "runAfter": {}
         },
-        "Base_fields": {
+        "Rs_now": {
           "type": "Compose",
-          "inputs": [
-            {
-              "k": "时间（北京时间）",
-              "v": "@{if(empty(items('For_each_event')?['time']?['eventTime']), '', convertTimeZone(items('For_each_event')?['time']?['eventTime'], 'UTC', 'China Standard Time', 'yyyy-MM-dd HH:mm:ss'))}"
-            },
-            {
-              "k": "资源",
-              "v": "@{if(contains(coalesce(items('For_each_event')?['title'], ''), coalesce(items('For_each_event')?['resource']?['name'], '#none#')), '', coalesce(items('For_each_event')?['resource']?['name'], ''))}"
-            },
-            {
-              "k": "订阅",
-              "v": "@{if(empty(items('For_each_event')?['impacted']?['subscriptions']), coalesce(items('For_each_event')?['resource']?['subscriptionName'], items('For_each_event')?['resource']?['subscriptionId'], ''), concat(string(length(items('For_each_event')?['impacted']?['subscriptions'])), ' 个：', join(take(items('For_each_event')?['impacted']?['subscriptions'], 10), '、')))}"
-            },
-            {
-              "k": "资源组",
-              "v": "@{coalesce(items('For_each_event')?['resource']?['resourceGroup'], '')}"
-            },
-            {
-              "k": "区域",
-              "v": "@{if(not(empty(items('For_each_event')?['resource']?['region'])), items('For_each_event')?['resource']?['region'], if(empty(items('For_each_event')?['impacted']?['regions']), '', concat(join(take(items('For_each_event')?['impacted']?['regions'], 8), '、'), if(greater(length(items('For_each_event')?['impacted']?['regions']), 8), concat(' 等 ', string(length(items('For_each_event')?['impacted']?['regions'])), ' 个区域'), ''))))}"
-            }
-          ],
+          "inputs": "@utcNow()",
           "runAfter": {
-            "Webhook": [
+            "Rs_reset": [
               "Succeeded"
             ]
           }
         },
-        "Display_fields": {
-          "type": "Query",
-          "inputs": {
-            "from": "@union(outputs('Base_fields'), coalesce(items('For_each_event')?['display'], json('[]')))",
-            "where": "@and(not(empty(item()?['v'])), not(equals(item()?['v'], '-')), not(equals(item()?['v'], ' / ')))"
-          },
-          "runAfter": {
-            "Base_fields": [
-              "Succeeded"
-            ]
-          }
-        },
-        "Card": {
+        "Rs_mode": {
           "type": "Compose",
-          "inputs": {
-            "msg_type": "interactive",
-            "card": {
-              "config": {
-                "wide_screen_mode": true
-              },
-              "header": {
-                "template": "@{if(equals(items('For_each_event')?['status'], 'Resolved'), 'green', if(equals(items('For_each_event')?['severity'], 'Critical'), 'red', if(equals(items('For_each_event')?['severity'], 'Warning'), 'orange', 'blue')))}",
-                "title": {
-                  "tag": "plain_text",
-                  "content": "@{concat(if(equals(items('For_each_event')?['status'], 'Resolved'), '已恢复', if(equals(items('For_each_event')?['severity'], 'Critical'), '严重', if(equals(items('For_each_event')?['severity'], 'Warning'), '警告', '提示'))), '｜', coalesce(parameters('categoryNames')?[coalesce(items('For_each_event')?['category'], '-')], items('For_each_event')?['category']), '｜', take(coalesce(items('For_each_event')?['title'], ''), 150), if(greater(length(outputs('Summary_parts')), 1), concat('（1/', string(length(outputs('Summary_parts'))), '）'), ''))}"
-                }
-              },
-              "elements": [
-                {
-                  "tag": "div",
-                  "text": {
-                    "tag": "lark_md",
-                    "content": "@{join(body('Card_fields'), '\n')}"
-                  }
-                },
-                {
-                  "tag": "hr"
-                },
-                {
-                  "tag": "div",
-                  "text": {
-                    "tag": "lark_md",
-                    "content": "@{first(outputs('Summary_parts'))}"
-                  }
-                },
-                {
-                  "tag": "action",
-                  "actions": [
-                    {
-                      "tag": "button",
-                      "type": "primary",
-                      "text": {
-                        "tag": "plain_text",
-                        "content": "在 Azure 门户中查看"
-                      },
-                      "url": "@{coalesce(items('For_each_event')?['links']?['portal'], 'https://portal.azure.com')}"
-                    }
-                  ]
-                },
-                {
-                  "tag": "note",
-                  "elements": [
-                    {
-                      "tag": "plain_text",
-                      "content": "@{concat('Azure 告警 · 来源 ', coalesce(items('For_each_event')?['source']?['module'], '-'), ' · ', coalesce(items('For_each_event')?['source']?['channel'], '-'))}"
-                    }
-                  ]
-                }
-              ]
-            }
-          },
+          "inputs": "@if(and(equals(items('For_each_event')?['status'], 'Resolved'), equals(items('For_each_event')?['category'], 'ResourceHealth')), if(or(empty(parameters('stateTableUrl')), not(equals(parameters('repeatSuppression')?['enabled'], true))), 'drop', 'recovery'), if(or(empty(parameters('stateTableUrl')), not(equals(parameters('repeatSuppression')?['enabled'], true)), equals(items('For_each_event')?['status'], 'Resolved')), 'off', if(or(contains(parameters('repeatSuppression')?['categories'], coalesce(items('For_each_event')?['category'], '-')), contains(parameters('repeatSuppression')?['categories'], first(split(coalesce(items('For_each_event')?['category'], '-'), '.')))), 'alert', 'off')))",
           "runAfter": {
-            "Summary_parts": [
+            "Rs_now": [
               "Succeeded"
             ]
           }
         },
-        "Has_webhook": {
+        "Rs_key": {
+          "type": "Compose",
+          "inputs": "@concat(toLower(coalesce(items('For_each_event')?['resource']?['id'], '-')), '|', coalesce(items('For_each_event')?['category'], '-'), '|', if(equals(outputs('Rs_mode'), 'recovery'), '#resource', coalesce(items('For_each_event')?['title'], '')))",
+          "runAfter": {
+            "Rs_mode": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Rs_res_key": {
+          "type": "Compose",
+          "inputs": "@concat(toLower(coalesce(items('For_each_event')?['resource']?['id'], '-')), '|', coalesce(items('For_each_event')?['category'], '-'), '|#resource')",
+          "runAfter": {
+            "Rs_key": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Rs_row": {
+          "type": "Compose",
+          "inputs": "@replace(replace(replace(base64(outputs('Rs_key')), '/', '_'), '+', '-'), '=', '')",
+          "runAfter": {
+            "Rs_res_key": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Rs_res_row": {
+          "type": "Compose",
+          "inputs": "@replace(replace(replace(base64(outputs('Rs_res_key')), '/', '_'), '+', '-'), '=', '')",
+          "runAfter": {
+            "Rs_row": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Rs_active": {
           "type": "If",
           "expression": {
             "and": [
               {
                 "not": {
                   "equals": [
-                    "@outputs('Webhook')",
-                    ""
+                    "@outputs('Rs_mode')",
+                    "off"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "equals": [
+                    "@outputs('Rs_mode')",
+                    "drop"
                   ]
                 }
               }
             ]
           },
           "actions": {
-            "For_each_message": {
-              "type": "Foreach",
-              "foreach": "@outputs('Messages')",
-              "runtimeConfiguration": {
-                "concurrency": {
-                  "repetitions": 1
+            "Rs_get": {
+              "type": "Http",
+              "inputs": {
+                "method": "GET",
+                "uri": "@{parameters('stateTableUrl')}(PartitionKey='s',RowKey='@{outputs('Rs_row')}')",
+                "headers": {
+                  "Accept": "application/json;odata=nometadata",
+                  "x-ms-version": "2019-02-02"
+                },
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "identity": "@parameters('miId')",
+                  "audience": "https://storage.azure.com/"
                 }
               },
+              "runAfter": {}
+            },
+            "Rs_readable": {
+              "type": "Compose",
+              "inputs": "@or(equals(outputs('Rs_get')?['statusCode'], 200), equals(outputs('Rs_get')?['statusCode'], 404))",
+              "runAfter": {
+                "Rs_get": [
+                  "Succeeded",
+                  "Failed",
+                  "TimedOut"
+                ]
+              }
+            },
+            "Rs_prev": {
+              "type": "Compose",
+              "inputs": "@if(equals(outputs('Rs_get')?['statusCode'], 200), removeProperty(body('Rs_get'), 'Timestamp'), json('{}'))",
+              "runAfter": {
+                "Rs_readable": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Rs_alert_or_recovery": {
+              "type": "If",
+              "expression": {
+                "and": [
+                  {
+                    "equals": [
+                      "@outputs('Rs_mode')",
+                      "alert"
+                    ]
+                  }
+                ]
+              },
               "actions": {
-                "Reset_attempt": {
-                  "type": "SetVariable",
-                  "inputs": {
-                    "name": "attempt",
-                    "value": 0
-                  },
+                "Rs_fresh": {
+                  "type": "Compose",
+                  "inputs": "@or(empty(outputs('Rs_prev')?['lastSeen']), greater(div(sub(ticks(outputs('Rs_now')), ticks(outputs('Rs_prev')?['lastSeen'])), 10000000), mul(int(parameters('repeatSuppression')?['quietDays']), 86400)))",
                   "runAfter": {}
                 },
-                "Reset_state": {
+                "Rs_first": {
+                  "type": "Compose",
+                  "inputs": "@if(outputs('Rs_fresh'), outputs('Rs_now'), outputs('Rs_prev')?['firstSeen'])",
+                  "runAfter": {
+                    "Rs_fresh": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Rs_total": {
+                  "type": "Compose",
+                  "inputs": "@if(outputs('Rs_fresh'), 1, add(int(outputs('Rs_prev')?['total']), 1))",
+                  "runAfter": {
+                    "Rs_first": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Rs_age": {
+                  "type": "Compose",
+                  "inputs": "@div(sub(ticks(outputs('Rs_now')), ticks(outputs('Rs_first'))), 10000000)",
+                  "runAfter": {
+                    "Rs_total": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Rs_in_burst": {
+                  "type": "Compose",
+                  "inputs": "@and(lessOrEquals(outputs('Rs_total'), int(parameters('repeatSuppression')?['burstCount'])), lessOrEquals(outputs('Rs_age'), mul(int(parameters('repeatSuppression')?['burstWindowHours']), 3600)))",
+                  "runAfter": {
+                    "Rs_age": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Rs_interval": {
+                  "type": "Compose",
+                  "inputs": "@if(less(outputs('Rs_age'), mul(int(parameters('repeatSuppression')?['dailyDays']), 86400)), 86400, if(less(outputs('Rs_age'), mul(add(int(parameters('repeatSuppression')?['dailyDays']), mul(int(parameters('repeatSuppression')?['weeklyWeeks']), 7)), 86400)), 604800, 2592000))",
+                  "runAfter": {
+                    "Rs_in_burst": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Rs_send": {
+                  "type": "Compose",
+                  "inputs": "@or(outputs('Rs_in_burst'), and(not(outputs('Rs_fresh')), greaterOrEquals(div(sub(ticks(outputs('Rs_now')), ticks(outputs('Rs_prev')?['lastSent'])), 10000000), outputs('Rs_interval'))))",
+                  "runAfter": {
+                    "Rs_interval": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Rs_skipped": {
+                  "type": "Compose",
+                  "inputs": "@if(outputs('Rs_fresh'), 0, int(coalesce(outputs('Rs_prev')?['skipped'], 0)))",
+                  "runAfter": {
+                    "Rs_send": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Rs_note": {
+                  "type": "Compose",
+                  "inputs": "@if(and(outputs('Rs_send'), not(outputs('Rs_in_burst'))), concat('**重复提醒**：上次提醒（', convertTimeZone(outputs('Rs_prev')?['lastSent'], 'UTC', 'China Standard Time', 'MM-dd HH:mm'), '）以来又发生 ', string(add(outputs('Rs_skipped'), 1)), ' 次；首次出现 ', convertTimeZone(outputs('Rs_first'), 'UTC', 'China Standard Time', 'MM-dd HH:mm'), '，累计 ', string(outputs('Rs_total')), ' 次。同一告警之后', if(equals(outputs('Rs_interval'), 86400), '每天', if(equals(outputs('Rs_interval'), 604800), '每周', '每月')), '最多提醒一次。'), if(and(outputs('Rs_in_burst'), equals(outputs('Rs_total'), int(parameters('repeatSuppression')?['burstCount'])), greater(int(parameters('repeatSuppression')?['burstCount']), 1)), concat('**提示**：同一告警 ', string(parameters('repeatSuppression')?['burstWindowHours']), ' 小时内已出现 ', string(outputs('Rs_total')), ' 次，之后改为每天最多提醒一次。'), ''))",
+                  "runAfter": {
+                    "Rs_skipped": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Rs_put": {
+                  "type": "Http",
+                  "inputs": {
+                    "method": "PUT",
+                    "uri": "@{parameters('stateTableUrl')}(PartitionKey='s',RowKey='@{outputs('Rs_row')}')",
+                    "headers": {
+                      "Accept": "application/json;odata=nometadata",
+                      "x-ms-version": "2019-02-02",
+                      "Content-Type": "application/json"
+                    },
+                    "authentication": {
+                      "type": "ManagedServiceIdentity",
+                      "identity": "@parameters('miId')",
+                      "audience": "https://storage.azure.com/"
+                    },
+                    "body": {
+                      "key": "@{outputs('Rs_key')}",
+                      "category": "@{items('For_each_event')?['category']}",
+                      "title": "@{items('For_each_event')?['title']}",
+                      "resourceId": "@{items('For_each_event')?['resource']?['id']}",
+                      "firstSeen": "@{outputs('Rs_first')}",
+                      "lastSeen": "@{outputs('Rs_now')}",
+                      "lastSent": "@{if(outputs('Rs_send'), outputs('Rs_now'), outputs('Rs_prev')?['lastSent'])}",
+                      "total": "@outputs('Rs_total')",
+                      "skipped": "@if(outputs('Rs_send'), 0, add(outputs('Rs_skipped'), 1))"
+                    }
+                  },
+                  "runAfter": {
+                    "Rs_note": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Rs_put_res": {
+                  "type": "Http",
+                  "inputs": {
+                    "method": "PUT",
+                    "uri": "@{parameters('stateTableUrl')}(PartitionKey='s',RowKey='@{outputs('Rs_res_row')}')",
+                    "headers": {
+                      "Accept": "application/json;odata=nometadata",
+                      "x-ms-version": "2019-02-02",
+                      "Content-Type": "application/json"
+                    },
+                    "authentication": {
+                      "type": "ManagedServiceIdentity",
+                      "identity": "@parameters('miId')",
+                      "audience": "https://storage.azure.com/"
+                    },
+                    "body": {
+                      "key": "@{outputs('Rs_res_key')}",
+                      "lastTitle": "@{items('For_each_event')?['title']}",
+                      "lastSeen": "@{outputs('Rs_now')}",
+                      "notify": "@and(outputs('Rs_send'), outputs('Rs_in_burst'))"
+                    }
+                  },
+                  "runAfter": {
+                    "Rs_put": [
+                      "Succeeded",
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  }
+                },
+                "Set_rs_alert": {
                   "type": "SetVariable",
                   "inputs": {
-                    "name": "sendState",
-                    "value": "pending"
-                  },
-                  "runAfter": {
-                    "Reset_attempt": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Send_with_retry": {
-                  "type": "Until",
-                  "expression": "@or(not(equals(variables('sendState'), 'pending')), greaterOrEquals(variables('attempt'), parameters('feishuMaxAttempts')))",
-                  "limit": {
-                    "count": 20,
-                    "timeout": "PT1H"
-                  },
-                  "actions": {
-                    "Post_message": {
-                      "type": "Http",
-                      "inputs": {
-                        "method": "POST",
-                        "uri": "@{outputs('Webhook')}",
-                        "headers": {
-                          "Content-Type": "application/json"
-                        },
-                        "body": "@items('For_each_message')"
-                      },
-                      "runtimeConfiguration": {
-                        "secureData": {
-                          "properties": [
-                            "inputs"
-                          ]
-                        }
-                      },
-                      "runAfter": {}
-                    },
-                    "Count_attempt": {
-                      "type": "IncrementVariable",
-                      "inputs": {
-                        "name": "attempt",
-                        "value": 1
-                      },
-                      "runAfter": {
-                        "Post_message": [
-                          "Succeeded",
-                          "Failed",
-                          "TimedOut"
-                        ]
-                      }
-                    },
-                    "Check_result": {
-                      "type": "If",
-                      "expression": "@and(equals(actions('Post_message')?['status'], 'Succeeded'), equals(coalesce(body('Post_message')?['code'], body('Post_message')?['StatusCode'], 0), 0))",
-                      "actions": {
-                        "Mark_sent": {
-                          "type": "SetVariable",
-                          "inputs": {
-                            "name": "sendState",
-                            "value": "sent"
-                          },
-                          "runAfter": {}
-                        }
-                      },
-                      "else": {
-                        "actions": {
-                          "Rate_limited": {
-                            "type": "If",
-                            "expression": "@or(equals(coalesce(body('Post_message')?['code'], body('Post_message')?['StatusCode'], 0), 11232), equals(outputs('Post_message')?['statusCode'], 429))",
-                            "actions": {
-                              "Back_off": {
-                                "type": "If",
-                                "expression": "@less(variables('attempt'), parameters('feishuMaxAttempts'))",
-                                "actions": {
-                                  "Wait": {
-                                    "type": "Wait",
-                                    "inputs": {
-                                      "interval": {
-                                        "count": "@add(mul(15, variables('attempt')), rand(0, 15))",
-                                        "unit": "Second"
-                                      }
-                                    },
-                                    "runAfter": {}
-                                  }
-                                },
-                                "else": {
-                                  "actions": {}
-                                },
-                                "runAfter": {}
-                              }
-                            },
-                            "else": {
-                              "actions": {
-                                "Mark_failed": {
-                                  "type": "SetVariable",
-                                  "inputs": {
-                                    "name": "sendState",
-                                    "value": "failed"
-                                  },
-                                  "runAfter": {}
-                                }
-                              }
-                            },
-                            "runAfter": {}
-                          }
-                        }
-                      },
-                      "runAfter": {
-                        "Count_attempt": [
-                          "Succeeded"
-                        ]
-                      }
+                    "name": "rs",
+                    "value": {
+                      "send": "@or(not(outputs('Rs_readable')), outputs('Rs_send'))",
+                      "note": "@{if(outputs('Rs_readable'), outputs('Rs_note'), '')}",
+                      "repeat": "@and(outputs('Rs_readable'), outputs('Rs_send'), not(outputs('Rs_in_burst')))",
+                      "title": ""
                     }
                   },
                   "runAfter": {
-                    "Reset_state": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Not_sent": {
-                  "type": "If",
-                  "expression": "@not(equals(variables('sendState'), 'sent'))",
-                  "actions": {
-                    "Record_send_failure": {
-                      "type": "AppendToArrayVariable",
-                      "inputs": {
-                        "name": "failures",
-                        "value": {
-                          "eventId": "@items('For_each_event')?['eventId']",
-                          "attempts": "@variables('attempt')",
-                          "status": "@outputs('Post_message')?['statusCode']",
-                          "response": "@body('Post_message')"
-                        }
-                      },
-                      "runAfter": {}
-                    }
-                  },
-                  "else": {
-                    "actions": {}
-                  },
-                  "runAfter": {
-                    "Send_with_retry": [
+                    "Rs_put_res": [
                       "Succeeded",
                       "Failed",
                       "TimedOut"
@@ -589,19 +603,94 @@
                   }
                 }
               },
-              "runAfter": {}
+              "else": {
+                "actions": {
+                  "Rs_rec_send": {
+                    "type": "Compose",
+                    "inputs": "@and(equals(outputs('Rs_get')?['statusCode'], 200), equals(outputs('Rs_prev')?['notify'], true))",
+                    "runAfter": {}
+                  },
+                  "Set_rs_recovery": {
+                    "type": "SetVariable",
+                    "inputs": {
+                      "name": "rs",
+                      "value": {
+                        "send": "@outputs('Rs_rec_send')",
+                        "note": "",
+                        "repeat": false,
+                        "title": "@{coalesce(outputs('Rs_prev')?['lastTitle'], '')}"
+                      }
+                    },
+                    "runAfter": {
+                      "Rs_rec_write": [
+                        "Succeeded",
+                        "Failed",
+                        "TimedOut"
+                      ]
+                    }
+                  },
+                  "Rs_rec_write": {
+                    "type": "If",
+                    "expression": {
+                      "and": [
+                        {
+                          "equals": [
+                            "@outputs('Rs_rec_send')",
+                            true
+                          ]
+                        }
+                      ]
+                    },
+                    "actions": {
+                      "Rs_rec_put": {
+                        "type": "Http",
+                        "inputs": {
+                          "method": "PUT",
+                          "uri": "@{parameters('stateTableUrl')}(PartitionKey='s',RowKey='@{outputs('Rs_row')}')",
+                          "headers": {
+                            "Accept": "application/json;odata=nometadata",
+                            "x-ms-version": "2019-02-02",
+                            "Content-Type": "application/json"
+                          },
+                          "authentication": {
+                            "type": "ManagedServiceIdentity",
+                            "identity": "@parameters('miId')",
+                            "audience": "https://storage.azure.com/"
+                          },
+                          "body": "@setProperty(setProperty(outputs('Rs_prev'), 'notify', false), 'recoveredAt', outputs('Rs_now'))"
+                        },
+                        "runAfter": {}
+                      }
+                    },
+                    "else": {
+                      "actions": {}
+                    },
+                    "runAfter": {
+                      "Rs_rec_send": [
+                        "Succeeded"
+                      ]
+                    }
+                  }
+                }
+              },
+              "runAfter": {
+                "Rs_prev": [
+                  "Succeeded"
+                ]
+              }
             }
           },
           "else": {
             "actions": {
-              "Record_no_webhook": {
-                "type": "AppendToArrayVariable",
+              "Set_rs_default": {
+                "type": "SetVariable",
                 "inputs": {
-                  "name": "failures",
+                  "name": "rs",
                   "value": {
-                    "eventId": "@items('For_each_event')?['eventId']",
-                    "error": "no webhook configured for category",
-                    "category": "@items('For_each_event')?['category']"
+                    "send": "@not(equals(outputs('Rs_mode'), 'drop'))",
+                    "note": "",
+                    "repeat": false,
+                    "title": ""
                   }
                 },
                 "runAfter": {}
@@ -609,88 +698,434 @@
             }
           },
           "runAfter": {
-            "Messages": [
+            "Rs_res_row": [
               "Succeeded"
             ]
           }
         },
-        "Card_fields": {
-          "type": "Select",
-          "inputs": {
-            "from": "@body('Display_fields')",
-            "select": "@concat('**', item()?['k'], '**：', item()?['v'])"
+        "Rs_should_send": {
+          "type": "If",
+          "expression": {
+            "and": [
+              {
+                "equals": [
+                  "@variables('rs')?['send']",
+                  true
+                ]
+              }
+            ]
           },
-          "runAfter": {
-            "Display_fields": [
-              "Succeeded"
-            ]
-          }
-        },
-        "Summary_parts": {
-          "type": "Compose",
-          "inputs": "@if(empty(items('For_each_event')?['summary']), createArray('（无详细说明）'), chunk(items('For_each_event')?['summary'], 4000))",
-          "runAfter": {
-            "Card_fields": [
-              "Succeeded"
-            ]
-          }
-        },
-        "Part_cards": {
-          "type": "Select",
-          "inputs": {
-            "from": "@skip(range(0, length(outputs('Summary_parts'))), 1)",
-            "select": {
-              "msg_type": "interactive",
-              "card": {
-                "config": {
-                  "wide_screen_mode": true
+          "actions": {
+            "Webhook": {
+              "type": "Compose",
+              "inputs": "@coalesce(parameters('webhooks')?[coalesce(items('For_each_event')?['category'], '-')], parameters('webhooks')?[first(split(coalesce(items('For_each_event')?['category'], '-'), '.'))], parameters('webhooks')?['default'], '')",
+              "runAfter": {}
+            },
+            "Base_fields": {
+              "type": "Compose",
+              "inputs": [
+                {
+                  "k": "时间（北京时间）",
+                  "v": "@{if(empty(items('For_each_event')?['time']?['eventTime']), '', convertTimeZone(items('For_each_event')?['time']?['eventTime'], 'UTC', 'China Standard Time', 'yyyy-MM-dd HH:mm:ss'))}"
                 },
-                "header": {
-                  "template": "@{if(equals(items('For_each_event')?['status'], 'Resolved'), 'green', if(equals(items('For_each_event')?['severity'], 'Critical'), 'red', if(equals(items('For_each_event')?['severity'], 'Warning'), 'orange', 'blue')))}",
-                  "title": {
-                    "tag": "plain_text",
-                    "content": "@{concat(if(equals(items('For_each_event')?['status'], 'Resolved'), '已恢复', if(equals(items('For_each_event')?['severity'], 'Critical'), '严重', if(equals(items('For_each_event')?['severity'], 'Warning'), '警告', '提示'))), '｜', coalesce(parameters('categoryNames')?[coalesce(items('For_each_event')?['category'], '-')], items('For_each_event')?['category']), '｜', take(coalesce(items('For_each_event')?['title'], ''), 150), '（续 ', string(add(item(), 1)), '/', string(length(outputs('Summary_parts'))), '）')}"
-                  }
+                {
+                  "k": "资源",
+                  "v": "@{if(contains(coalesce(items('For_each_event')?['title'], ''), coalesce(items('For_each_event')?['resource']?['name'], '#none#')), '', coalesce(items('For_each_event')?['resource']?['name'], ''))}"
                 },
-                "elements": [
-                  {
-                    "tag": "div",
-                    "text": {
-                      "tag": "lark_md",
-                      "content": "@{outputs('Summary_parts')[item()]}"
+                {
+                  "k": "订阅",
+                  "v": "@{if(empty(items('For_each_event')?['impacted']?['subscriptions']), coalesce(items('For_each_event')?['resource']?['subscriptionName'], items('For_each_event')?['resource']?['subscriptionId'], ''), concat(string(length(items('For_each_event')?['impacted']?['subscriptions'])), ' 个：', join(take(items('For_each_event')?['impacted']?['subscriptions'], 10), '、')))}"
+                },
+                {
+                  "k": "资源组",
+                  "v": "@{coalesce(items('For_each_event')?['resource']?['resourceGroup'], '')}"
+                },
+                {
+                  "k": "区域",
+                  "v": "@{if(not(empty(items('For_each_event')?['resource']?['region'])), items('For_each_event')?['resource']?['region'], if(empty(items('For_each_event')?['impacted']?['regions']), '', concat(join(take(items('For_each_event')?['impacted']?['regions'], 8), '、'), if(greater(length(items('For_each_event')?['impacted']?['regions']), 8), concat(' 等 ', string(length(items('For_each_event')?['impacted']?['regions'])), ' 个区域'), ''))))}"
+                }
+              ],
+              "runAfter": {
+                "Webhook": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Display_fields": {
+              "type": "Query",
+              "inputs": {
+                "from": "@union(outputs('Base_fields'), coalesce(items('For_each_event')?['display'], json('[]')))",
+                "where": "@and(not(empty(item()?['v'])), not(equals(item()?['v'], '-')), not(equals(item()?['v'], ' / ')))"
+              },
+              "runAfter": {
+                "Base_fields": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Card": {
+              "type": "Compose",
+              "inputs": {
+                "msg_type": "interactive",
+                "card": {
+                  "config": {
+                    "wide_screen_mode": true
+                  },
+                  "header": {
+                    "template": "@{if(equals(items('For_each_event')?['status'], 'Resolved'), 'green', if(equals(items('For_each_event')?['severity'], 'Critical'), 'red', if(equals(items('For_each_event')?['severity'], 'Warning'), 'orange', 'blue')))}",
+                    "title": {
+                      "tag": "plain_text",
+                      "content": "@{concat(if(equals(items('For_each_event')?['status'], 'Resolved'), '已恢复', if(equals(items('For_each_event')?['severity'], 'Critical'), '严重', if(equals(items('For_each_event')?['severity'], 'Warning'), '警告', '提示'))), '｜', coalesce(parameters('categoryNames')?[coalesce(items('For_each_event')?['category'], '-')], items('For_each_event')?['category']), '｜', concat(if(equals(variables('rs')?['repeat'], true), '【重复】', ''), take(if(empty(variables('rs')?['title']), coalesce(items('For_each_event')?['title'], ''), variables('rs')?['title']), 150)), if(greater(length(outputs('Summary_parts')), 1), concat('（1/', string(length(outputs('Summary_parts'))), '）'), ''))}"
                     }
                   },
+                  "elements": [
+                    {
+                      "tag": "div",
+                      "text": {
+                        "tag": "lark_md",
+                        "content": "@{concat(if(empty(variables('rs')?['note']), '', concat(variables('rs')?['note'], '\n\n')), join(body('Card_fields'), '\n'))}"
+                      }
+                    },
+                    {
+                      "tag": "hr"
+                    },
+                    {
+                      "tag": "div",
+                      "text": {
+                        "tag": "lark_md",
+                        "content": "@{first(outputs('Summary_parts'))}"
+                      }
+                    },
+                    {
+                      "tag": "action",
+                      "actions": [
+                        {
+                          "tag": "button",
+                          "type": "primary",
+                          "text": {
+                            "tag": "plain_text",
+                            "content": "在 Azure 门户中查看"
+                          },
+                          "url": "@{coalesce(items('For_each_event')?['links']?['portal'], 'https://portal.azure.com')}"
+                        }
+                      ]
+                    },
+                    {
+                      "tag": "note",
+                      "elements": [
+                        {
+                          "tag": "plain_text",
+                          "content": "@{concat('Azure 告警 · 来源 ', coalesce(items('For_each_event')?['source']?['module'], '-'), ' · ', coalesce(items('For_each_event')?['source']?['channel'], '-'))}"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              "runAfter": {
+                "Summary_parts": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Has_webhook": {
+              "type": "If",
+              "expression": {
+                "and": [
                   {
-                    "tag": "note",
+                    "not": {
+                      "equals": [
+                        "@outputs('Webhook')",
+                        ""
+                      ]
+                    }
+                  }
+                ]
+              },
+              "actions": {
+                "For_each_message": {
+                  "type": "Foreach",
+                  "foreach": "@outputs('Messages')",
+                  "runtimeConfiguration": {
+                    "concurrency": {
+                      "repetitions": 1
+                    }
+                  },
+                  "actions": {
+                    "Reset_attempt": {
+                      "type": "SetVariable",
+                      "inputs": {
+                        "name": "attempt",
+                        "value": 0
+                      },
+                      "runAfter": {}
+                    },
+                    "Reset_state": {
+                      "type": "SetVariable",
+                      "inputs": {
+                        "name": "sendState",
+                        "value": "pending"
+                      },
+                      "runAfter": {
+                        "Reset_attempt": [
+                          "Succeeded"
+                        ]
+                      }
+                    },
+                    "Send_with_retry": {
+                      "type": "Until",
+                      "expression": "@or(not(equals(variables('sendState'), 'pending')), greaterOrEquals(variables('attempt'), parameters('feishuMaxAttempts')))",
+                      "limit": {
+                        "count": 20,
+                        "timeout": "PT1H"
+                      },
+                      "actions": {
+                        "Post_message": {
+                          "type": "Http",
+                          "inputs": {
+                            "method": "POST",
+                            "uri": "@{outputs('Webhook')}",
+                            "headers": {
+                              "Content-Type": "application/json"
+                            },
+                            "body": "@items('For_each_message')"
+                          },
+                          "runtimeConfiguration": {
+                            "secureData": {
+                              "properties": [
+                                "inputs"
+                              ]
+                            }
+                          },
+                          "runAfter": {}
+                        },
+                        "Count_attempt": {
+                          "type": "IncrementVariable",
+                          "inputs": {
+                            "name": "attempt",
+                            "value": 1
+                          },
+                          "runAfter": {
+                            "Post_message": [
+                              "Succeeded",
+                              "Failed",
+                              "TimedOut"
+                            ]
+                          }
+                        },
+                        "Check_result": {
+                          "type": "If",
+                          "expression": "@and(equals(actions('Post_message')?['status'], 'Succeeded'), equals(coalesce(body('Post_message')?['code'], body('Post_message')?['StatusCode'], 0), 0))",
+                          "actions": {
+                            "Mark_sent": {
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "sendState",
+                                "value": "sent"
+                              },
+                              "runAfter": {}
+                            }
+                          },
+                          "else": {
+                            "actions": {
+                              "Rate_limited": {
+                                "type": "If",
+                                "expression": "@or(equals(coalesce(body('Post_message')?['code'], body('Post_message')?['StatusCode'], 0), 11232), equals(outputs('Post_message')?['statusCode'], 429))",
+                                "actions": {
+                                  "Back_off": {
+                                    "type": "If",
+                                    "expression": "@less(variables('attempt'), parameters('feishuMaxAttempts'))",
+                                    "actions": {
+                                      "Wait": {
+                                        "type": "Wait",
+                                        "inputs": {
+                                          "interval": {
+                                            "count": "@add(mul(15, variables('attempt')), rand(0, 15))",
+                                            "unit": "Second"
+                                          }
+                                        },
+                                        "runAfter": {}
+                                      }
+                                    },
+                                    "else": {
+                                      "actions": {}
+                                    },
+                                    "runAfter": {}
+                                  }
+                                },
+                                "else": {
+                                  "actions": {
+                                    "Mark_failed": {
+                                      "type": "SetVariable",
+                                      "inputs": {
+                                        "name": "sendState",
+                                        "value": "failed"
+                                      },
+                                      "runAfter": {}
+                                    }
+                                  }
+                                },
+                                "runAfter": {}
+                              }
+                            }
+                          },
+                          "runAfter": {
+                            "Count_attempt": [
+                              "Succeeded"
+                            ]
+                          }
+                        }
+                      },
+                      "runAfter": {
+                        "Reset_state": [
+                          "Succeeded"
+                        ]
+                      }
+                    },
+                    "Not_sent": {
+                      "type": "If",
+                      "expression": "@not(equals(variables('sendState'), 'sent'))",
+                      "actions": {
+                        "Record_send_failure": {
+                          "type": "AppendToArrayVariable",
+                          "inputs": {
+                            "name": "failures",
+                            "value": {
+                              "eventId": "@items('For_each_event')?['eventId']",
+                              "attempts": "@variables('attempt')",
+                              "status": "@outputs('Post_message')?['statusCode']",
+                              "response": "@body('Post_message')"
+                            }
+                          },
+                          "runAfter": {}
+                        }
+                      },
+                      "else": {
+                        "actions": {}
+                      },
+                      "runAfter": {
+                        "Send_with_retry": [
+                          "Succeeded",
+                          "Failed",
+                          "TimedOut"
+                        ]
+                      }
+                    }
+                  },
+                  "runAfter": {}
+                }
+              },
+              "else": {
+                "actions": {
+                  "Record_no_webhook": {
+                    "type": "AppendToArrayVariable",
+                    "inputs": {
+                      "name": "failures",
+                      "value": {
+                        "eventId": "@items('For_each_event')?['eventId']",
+                        "error": "no webhook configured for category",
+                        "category": "@items('For_each_event')?['category']"
+                      }
+                    },
+                    "runAfter": {}
+                  }
+                }
+              },
+              "runAfter": {
+                "Messages": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Card_fields": {
+              "type": "Select",
+              "inputs": {
+                "from": "@body('Display_fields')",
+                "select": "@concat('**', item()?['k'], '**：', item()?['v'])"
+              },
+              "runAfter": {
+                "Display_fields": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Summary_parts": {
+              "type": "Compose",
+              "inputs": "@if(empty(items('For_each_event')?['summary']), createArray('（无详细说明）'), chunk(items('For_each_event')?['summary'], 4000))",
+              "runAfter": {
+                "Card_fields": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Part_cards": {
+              "type": "Select",
+              "inputs": {
+                "from": "@skip(range(0, length(outputs('Summary_parts'))), 1)",
+                "select": {
+                  "msg_type": "interactive",
+                  "card": {
+                    "config": {
+                      "wide_screen_mode": true
+                    },
+                    "header": {
+                      "template": "@{if(equals(items('For_each_event')?['status'], 'Resolved'), 'green', if(equals(items('For_each_event')?['severity'], 'Critical'), 'red', if(equals(items('For_each_event')?['severity'], 'Warning'), 'orange', 'blue')))}",
+                      "title": {
+                        "tag": "plain_text",
+                        "content": "@{concat(if(equals(items('For_each_event')?['status'], 'Resolved'), '已恢复', if(equals(items('For_each_event')?['severity'], 'Critical'), '严重', if(equals(items('For_each_event')?['severity'], 'Warning'), '警告', '提示'))), '｜', coalesce(parameters('categoryNames')?[coalesce(items('For_each_event')?['category'], '-')], items('For_each_event')?['category']), '｜', concat(if(equals(variables('rs')?['repeat'], true), '【重复】', ''), take(if(empty(variables('rs')?['title']), coalesce(items('For_each_event')?['title'], ''), variables('rs')?['title']), 150)), '（续 ', string(add(item(), 1)), '/', string(length(outputs('Summary_parts'))), '）')}"
+                      }
+                    },
                     "elements": [
                       {
-                        "tag": "plain_text",
-                        "content": "@{concat('Azure 告警 · 来源 ', coalesce(items('For_each_event')?['source']?['module'], '-'), ' · ', coalesce(items('For_each_event')?['source']?['channel'], '-'))}"
+                        "tag": "div",
+                        "text": {
+                          "tag": "lark_md",
+                          "content": "@{outputs('Summary_parts')[item()]}"
+                        }
+                      },
+                      {
+                        "tag": "note",
+                        "elements": [
+                          {
+                            "tag": "plain_text",
+                            "content": "@{concat('Azure 告警 · 来源 ', coalesce(items('For_each_event')?['source']?['module'], '-'), ' · ', coalesce(items('For_each_event')?['source']?['channel'], '-'))}"
+                          }
+                        ]
                       }
                     ]
                   }
+                }
+              },
+              "runAfter": {
+                "Card": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Messages": {
+              "type": "Compose",
+              "inputs": "@union(createArray(outputs('Card')), body('Part_cards'))",
+              "runAfter": {
+                "Part_cards": [
+                  "Succeeded"
                 ]
               }
             }
           },
+          "else": {
+            "actions": {}
+          },
           "runAfter": {
-            "Card": [
-              "Succeeded"
-            ]
-          }
-        },
-        "Messages": {
-          "type": "Compose",
-          "inputs": "@union(createArray(outputs('Card')), body('Part_cards'))",
-          "runAfter": {
-            "Part_cards": [
-              "Succeeded"
+            "Rs_active": [
+              "Succeeded",
+              "Failed",
+              "TimedOut"
             ]
           }
         }
       },
       "runAfter": {
-        "Init_send_state": [
+        "Init_rs": [
           "Succeeded"
         ]
       }
@@ -1020,6 +1455,28 @@
       },
       "runAfter": {
         "Keyvault_events": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Init_rs": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "rs",
+            "type": "object",
+            "value": {
+              "send": true,
+              "note": "",
+              "repeat": false,
+              "title": ""
+            }
+          }
+        ]
+      },
+      "runAfter": {
+        "Init_send_state": [
           "Succeeded"
         ]
       }

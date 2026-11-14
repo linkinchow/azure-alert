@@ -21,7 +21,7 @@ param sinkEnabled bool = false
 @description('Existing Log Analytics workspace (must be in this resource group); empty = create one when the sink is enabled.')
 param sinkWorkspaceResourceId string = ''
 
-@description('M3: Resource Health event titles that are not sent .')
+@description('M3: Resource Health event titles that are not sent.')
 param resourceHealthExcludedTitles array = [
   'Low priority machine preempted'
   'Degraded'
@@ -33,6 +33,9 @@ param categoryNames object = {}
 
 @description('Feishu rate limiting (code 11232 / HTTP 429): attempts per message, with a growing wait between attempts (8 attempts take about 10 minutes).')
 param feishuMaxAttempts int = 8
+
+@description('Repeat suppression: the same alert (resource + category + title) is sent at once, then at most once a day, then once a week, then once a month; it starts over after quietDays without an occurrence. State is kept in a storage table in this resource group. Fields (defaults): enabled (true), categories ([ResourceHealth, ActivityFailure]; category names or prefixes before the dot), burstCount (2, sent as usual within burstWindowHours, 24), dailyDays (7), weeklyWeeks (4), quietDays (3). Only the fields given override the defaults.')
+param repeatSuppression object = {}
 
 var defaultCategoryNames = {
   'Flash.HostFailure': '主机故障'
@@ -112,6 +115,30 @@ module sink 'sink.bicep' = if (sinkEnabled) {
   }
 }
 
+var defaultRepeatSuppression = {
+  enabled: true
+  categories: [
+    'ResourceHealth'
+    'ActivityFailure'
+  ]
+  burstCount: 2
+  burstWindowHours: 24
+  dailyDays: 7
+  weeklyWeeks: 4
+  quietDays: 3
+}
+var suppression = union(defaultRepeatSuppression, repeatSuppression)
+
+module state 'state.bicep' = if (suppression.enabled) {
+  name: '${prefix}-state'
+  params: {
+    prefix: prefix
+    location: location
+    tags: tags
+    identityPrincipalId: identity.properties.principalId
+  }
+}
+
 resource router 'Microsoft.Logic/workflows@2019-05-01' = {
   name: '${prefix}-router'
   location: location
@@ -134,6 +161,12 @@ resource router 'Microsoft.Logic/workflows@2019-05-01' = {
       }
       feishuMaxAttempts: {
         value: feishuMaxAttempts
+      }
+      repeatSuppression: {
+        value: suppression
+      }
+      stateTableUrl: {
+        value: suppression.enabled ? state!.outputs.tableUrl : ''
       }
       categoryNames: {
         value: union(defaultCategoryNames, categoryNames)
@@ -187,4 +220,5 @@ output identityId string = identity.id
 output identityPrincipalId string = identity.properties.principalId
 output routerName string = router.name
 output actionGroupId string = actionGroup.id
+output stateAccountName string = suppression.enabled ? state!.outputs.accountName : ''
 output sinkWorkspaceId string = sinkEnabled ? sink!.outputs.workspaceId : ''

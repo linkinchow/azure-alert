@@ -103,11 +103,15 @@ param dataDiskBandwidthThreshold int = 100
 @maxValue(15)
 param feishuMaxAttempts int = 8
 
+@description('Repeat suppression for push alerts (M3 / M7 by default): the same alert (resource + category + title) is sent at once (twice within 24 hours), then at most once a day for 7 days, once a week for 4 weeks, then once a month; it starts over after 3 days without an occurrence. Needs a storage account in the central resource group. Example: { "enabled": false } or { "categories": ["ResourceHealth"], "quietDays": 7 }. Only the fields given override the defaults.')
+param repeatSuppression object = {}
+
 var anyPush = (modules.?resourceHealth ?? false) || (modules.?metric ?? false) || (modules.?activityFailure ?? false)
 
 var alertCategoryMap = union(
   {
     '${prefix}-m3-resource-health': 'ResourceHealth'
+    '${prefix}-m3-resource-health-recovery': 'ResourceHealth'
     '${prefix}-m7-activity-failure': 'ActivityFailure'
   },
   toObject(metricRegions, r => '${prefix}-m4-vm-cpu-${r}', r => 'Metric.VmCpu'),
@@ -133,6 +137,7 @@ module core 'modules/core/main.bicep' = {
     sinkEnabled: sinkEnabled
     sinkWorkspaceResourceId: sinkWorkspaceResourceId
     feishuMaxAttempts: feishuMaxAttempts
+    repeatSuppression: repeatSuppression
   }
 }
 
@@ -261,6 +266,8 @@ module push 'modules/push/main.bicep' = [for (sub, i) in (anyPush ? union(pushSu
     actionGroupId: core.outputs.actionGroupId
     scopeId: pushScopeToResourceGroup ? '/subscriptions/${sub}/resourceGroups/${pushResourceGroupName}' : ''
     enableResourceHealth: modules.?resourceHealth ?? false
+    // Recovery events need the suppression state to match them to a sent alert.
+    enableResourceHealthRecovery: (modules.?resourceHealth ?? false) && (repeatSuppression.?enabled ?? true)
     enableMetric: modules.?metric ?? false
     enableActivityFailure: modules.?activityFailure ?? false
     metricRegions: metricRegions

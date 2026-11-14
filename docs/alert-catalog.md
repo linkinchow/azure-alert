@@ -139,8 +139,10 @@
 - **监控内容**：订阅中**任何资源类型**的 Resource Health 事件。
 - **数据源**：活动日志，通过订阅级 activity log alert（`<prefix>-m3-resource-health`）推送。条件：
   - `category = ResourceHealth`
-  - `properties.currentHealthStatus ∈ {Unavailable, Degraded}`（参数 `resourceHealthStatuses`）
-  - `properties.cause = PlatformInitiated`（参数 `resourceHealthCauses`）
+  - `level = Critical`（参数 `resourceHealthLevels`；平台导致的不可用是 Critical）
+  - `status ∈ {Active, In Progress, Resolved}`（参数 `resourceHealthEventStatuses`；不含 Updated 进度更新）
+  - Router 再按标题过滤掉 `resourceHealthExcludedTitles`（默认 Low priority machine preempted、Degraded、Unhealthy）。
+- **恢复事件**（开启重复告警降频时）：另一条规则 `<prefix>-m3-resource-health-recovery`，条件 `category = ResourceHealth`、`level = Informational`、`status = Resolved`。恢复到 Available 的事件都是 Informational 级别，上面那条只要 Critical 的规则收不到。
 - **频率**：Push，活动日志写入后触发。
 
 ### 4.1 子类与严重度
@@ -151,12 +153,14 @@
 | `ResourceHealth` | 资源健康 | `currentHealthStatus = Degraded` | 警告 |
 
 - 卡片标题：`<资源名>：<properties.title>`。正文：`properties.details`（为空时使用 title）。字段：健康状态（如"可用 → 不可用"）、发起方。
-- 不发"已恢复"卡片：恢复到 `Available` 的事件被条件过滤掉；而且活动日志告警本身没有"已解决"状态。
-- 每条活动日志事件推送一张卡片。按官方说明，以下情况都会写活动日志：资源状态变为或恢复自不健康、不健康持续超过 15 分钟、提交了注释。因此**同一次故障可能收到多张卡片**。
+- "已恢复"卡片（开启重复告警降频时）：只有这个资源的告警卡片确实发过、而且不在降频期间，才发一张绿色"已恢复"，标题沿用原告警。关闭降频时不发。
+- 按官方说明，以下情况都会写活动日志：资源状态变为或恢复自不健康、不健康持续超过 15 分钟、提交了注释。因此同一个问题可能反复触发。开启**重复告警降频**（默认）后，同一资源的同一标题在 24 小时内前 2 次照发，之后每天、每周、每月最多一张，见 [repeat-suppression.md](repeat-suppression.md)。
+- 实际案例：健康探测配置错误、没有流量的 Front Door，会在"不可用"和"可用"之间每小时来回一次，每天 20～30 条 "Unavailable Backends"。
 
 ### 4.2 过滤掉的事件
 - 用户触发（`UserInitiated`）的事件，例如停止或解除分配 VM。
-- `Available`、`Unknown` 状态（另外，官方说明转为 `Unknown` 的状态本来就不写活动日志）。
+- 用户触发的事件一般是 Informational 级别，被 `level = Critical` 条件过滤掉。
+- `Available`（恢复）只用于上面的"已恢复"卡片；`Unknown` 状态不推送（另外，官方说明转为 `Unknown` 的状态本来就不写活动日志）。
 
 ### 4.3 如何知道某种资源会产生哪些 Resource Health 事件
 1. 在 **Resource types and health checks** 页面找到你的资源类型（如 `Microsoft.Network/expressRouteCircuits`、`Microsoft.ContainerService/managedClusters`、`Microsoft.Storage/storageAccounts`）。页面列出了平台对该类型执行的健康检查（Executed Checks），事件标题就来自这些检查。该页面**只列检查项，不列出完整的事件标题清单**。
@@ -276,6 +280,7 @@
   - 所以 `level` 写成一个平铺条件，多个值用 `containsAny`（"等于其中任意一个"，精确匹配，不是子串匹配）。
   - `operationName` **不支持** `containsAny`（报 `ConditionFieldIsNull: operation name provided is null or empty`），只能用 `equals`；多个操作用 `anyOf` 包起来。因为 `level` 已经是平铺条件，这样写可以通过校验。
   - 自己编写这类规则时也要注意以上几点。
+- **重复告警降频**（默认开启）：同一资源上同一种失败（同一个卡片标题）反复出现时，24 小时内前 2 次照发，之后每天、每周、每月最多一张，见 [repeat-suppression.md](repeat-suppression.md)。
 - **分类方式**：Router 在 `statusMessage` **全文中做子串匹配**，按以下顺序判断：
 
 | category | 中文名 | 判定条件（按顺序） | 严重度 |

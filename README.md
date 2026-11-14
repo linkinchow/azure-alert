@@ -13,12 +13,13 @@
 | Core | — | 用户分配 MI、Router Logic App（Normalizer + 飞书卡片）、Action Group | 必选 |
 | M1 Service Health | ARG `servicehealthresources` | Pull，每分钟 | ✅ |
 | M2 Project Flash（VM / VMSS） | ARG `healthresourcechanges` | Pull，每分钟（VM、VMSS 各一个 Logic App） | ✅ |
-| M3 Resource Health（全资源类型） | Activity Log | 每个订阅一条 activity log alert | ✅ |
+| M3 Resource Health（全资源类型） | Activity Log | 每个订阅一条 activity log alert；开启重复告警降频时再加一条恢复事件规则，用于发"已恢复" | ✅ |
 | M4 Metric（VM CPU、数据盘带宽） | 平台指标 | 每个订阅 × 区域一条多资源 metric alert | ✅ |
 | M5 Quota（Compute） | ARG `quotaresources` | Pull，每 15 分钟 | ✅ |
 | M7 Activity 失败 | Activity Log | 每个订阅一条 activity log alert | ✅ |
 | M8 AKS 平台事件 | ARG `containerserviceeventresources` | Pull，每 5 分钟 | ✅ |
 | M9 Key Vault 到期提醒（证书 / 机密 / 密钥） | Key Vault 的 Event Grid 事件 | 每个 Key Vault 一个事件订阅，推送到 Router；见 [docs/keyvault-expiry.md](docs/keyvault-expiry.md) | 不选（需要额外权限） |
+| 重复告警降频 | — | M3 / M7 同一告警反复出现时逐步降频（每天 → 每周 → 每月），状态存在中心资源组的存储表里（不开放公网）；见 [docs/repeat-suppression.md](docs/repeat-suppression.md) | 开 |
 | 自监控 | Logic App `RunsFailed` 指标 | 每个 workflow 一条 metric alert，分类为 `SelfMonitor` | 随 core / 模块部署 |
 | 数据落地（可选） | — | Log Analytics 自定义表 `AzureAlertEvents_CL`（DCR + Logs Ingestion API） | `sinkEnabled=false` |
 
@@ -69,6 +70,7 @@ test/                         测试参数（webhook 放在 *.local.json，不�
    | `metricRegions` | M4 多资源 metric 规则的区域列表 |
    | `bootstrapSilent` | 默认 `true`：全新部署后，每个 Pull 模块从第一次成功运行起 30 分钟内只记录指纹、不发送（每次回看 24 小时），避免把历史事件一次性推进群。重新部署、更新模板不会再次静默 |
    | `feishuMaxAttempts` | 默认 `8`：飞书限流时每条消息最多发送几次（见下文"飞书限流"） |
+   | `repeatSuppression` | 默认开启：M3 / M7 重复告警降频，例如 `{ "enabled": false }` 关闭。字段见 [docs/repeat-suppression.md](docs/repeat-suppression.md) |
 
 ### 命令行部署
 
@@ -219,7 +221,7 @@ az deployment sub create -l eastus2 -n azure-alert -f main.bicep -p @deploy.loca
 
 ### 添加、升级或删除模块
 
-部署完成后，想加模块（例如第一次只选了 M1–M7，后来要加 M8），或者升级到新版本，**都是再部署一次**：
+部署完成后，想加模块（例如第一次只选了 M1–M7，后来要加 M8），或者升级到新版本，**都是再部署一次**。升级步骤、升级后的检查和每个版本的变化见 [docs/upgrade.md](docs/upgrade.md)。
 
 > **规则：使用和第一次相同的订阅、资源组名称和前缀，勾选所有需要的模块（已经部署的 + 新加的）。**
 
@@ -276,7 +278,7 @@ python scripts/remove-module.py --prefix aa --resource-group rg-azure-alert --mo
 |---|---|
 | M1 | Logic App `<前缀>-m1-service-health`，指标告警 `<前缀>-m1-service-health-runs-failed` |
 | M2 | Logic App `<前缀>-m2-flash-vm`、`<前缀>-m2-flash-vmss`，以及各自的 `-runs-failed` 指标告警 |
-| M3 | 活动日志告警 `<前缀>-m3-resource-health`（每个推送订阅一条） |
+| M3 | 活动日志告警 `<前缀>-m3-resource-health`、`<前缀>-m3-resource-health-recovery`（每个推送订阅各一条） |
 | M4 | 指标告警 `<前缀>-m4-vm-cpu-<区域>`、`<前缀>-m4-vm-datadisk-bw-<区域>`（每个推送订阅、每个区域各一对） |
 | M5 | Logic App `<前缀>-m5-quota`，指标告警 `<前缀>-m5-quota-runs-failed` |
 | M6 | Logic App `<前缀>-m6-scheduled-events`，指标告警 `<前缀>-m6-scheduled-events-runs-failed` |
@@ -286,12 +288,17 @@ python scripts/remove-module.py --prefix aa --resource-group rg-azure-alert --mo
 
 删除后再部署时，把对应模块设为 `false`（门户里不勾），就不会再建出来。
 
+重复告警降频不是模块，它的存储账户（`<前缀>st…`）在中心资源组里，关闭降频（`repeatSuppression.enabled = false`）后不会自动删除，不需要的话手动删除即可。
+
 ## 关键实现说明
 
 - **去重**：Pull 模块按"回看窗口 + 事件指纹"去重。
   - 每分钟查最近 2h，每小时查最近 24h，用于覆盖 ARG 的迟到事件。
   - 已通知的指纹保存在 Logic App **自己的运行历史**里（`State_out` 动作的输出），下一次运行通过 ARM 读取上一次成功运行的结果。
   - 不需要额外的 Storage 资源和授权。（Storage 关闭公网访问时，Consumption Logic App 仍可通过"受信任的 Azure 服务"例外访问，但要额外授予 Blob 数据角色，所以没有采用。）
+- **重复告警降频**：Push 告警（M3 / M7）没有可以复用的运行历史状态，所以单独用一张存储表保存每个告警的计数和时间。
+  - 存储账户不开放公网访问，禁用访问密钥；Router 用托管身份通过"受信任的 Azure 服务"例外读写。
+  - 读写失败时照常发送，不会漏告警。规则和配置见 [docs/repeat-suppression.md](docs/repeat-suppression.md)。
 - **ARG 限制**（实现时踩到的）：
   - 不支持 `let`、`datatable`。
   - `title`、`limit`、`kind` 是保留字。

@@ -351,32 +351,36 @@ Flash 的分类和级别由 `modules/m2-flash/rules.json` 按 annotationName 决
 | 179 | label | 按分类路由（可选） |
 | 180 | tooltip | 留空的分类发到默认 webhook。要把某个小类单独发到一个群，可以再加一行，例如 "Flash.HostFailure": "https://..."；完整分类名优先于模块前缀。[完整说明和示例](https://github.com/linkinchow/azure-alert#多个飞书群按分类路由) |
 | 186 | 校验提示 | 请输入 JSON 对象：键用英文双引号，最后一项后面不要加逗号 |
-| 206 | label | ARG 读取权限（Reader）授予方式 |
-| 207 | 选项 | 按订阅授予 |
-| 215 | 选项 | 不授予（部署后用 scripts/grant-reader-mg.sh 在管理组上授予） |
-| 220 | tooltip | Pull 模块（M1 / M2 / M5 / M6 / M8）需要对被监控的订阅有 Reader 权限。按订阅授予会在每个选中的订阅上授予；也可以部署后在管理组上统一授予。 |
-| 225 | label | 要告警的订阅（Pull 模块读取范围，授予 Reader） |
-| 234 | tooltip | 这些订阅会给告警托管身份授予 Reader，Pull 模块只读取这些订阅。 |
-| 239 | label | 排除的订阅（可选） |
-| 248 | tooltip | 在管理组上授权时，管理组下不想告警的订阅。 |
-| 253 | label | 部署 M3 / M4 / M7 告警规则的订阅 |
-| 262 | tooltip | M3 / M4 / M7 的告警规则会建在这些订阅里，监控整个订阅。 |
-| 267 | label | M4 metric 规则的区域（逗号分隔，例如 eastus2,westus3） |
-| 272 | 校验提示 | 区域名用逗号分隔，例如 eastus2,westus3 |
-| 274 | tooltip | M4 指标规则按区域创建，多个区域用逗号分隔，例如 eastus2,westus3。 |
-| 279 | label | M4 CPU 告警阈值（%，5 分钟平均） |
-| 281 | tooltip | 平台 CPU 指标在部分规格上到不了 100%（实测 D2s_v5 最高 83.3%），建议 80。 |
-| 285 | 校验提示 | 1-100 的整数 |
-| 291 | label | M4 数据盘带宽使用率告警阈值（%，5 分钟平均） |
-| 302 | label | 首次运行静默（不推送历史事件） |
-| 304 | tooltip | 建议勾选：首次运行只记录当前已有的事件，不把历史事件一次性推进群。 |
-| 312 | 选项 | 否 |
-| 322 | label | 事件落地到 Log Analytics 自定义表 AzureAlertEvents_CL |
-| 324 | tooltip | 把标准事件同时写入 Log Analytics 自定义表 AzureAlertEvents_CL，便于以后统计和分析。会新建一个工作区。 |
-| 351 | 说明框 | 没有勾选 M9 Key Vault 到期提醒，这一步不需要填写，直接点"下一步"。 |
-| 360 | 说明框 | 选择要接入到期提醒的现有 Key Vault（列出当前账号能看到的所有订阅里的 Key Vault）。部署时会在每个选中的 Key Vault 上建一个事件订阅（<前缀>-kv-expiry），Event Grid 会在 Key Vault 所在资源组自动创建或复用它的系统主题，不改动 Key Vault 本身。部署人需要对这些资源组有 Event Grid 写权限（EventGrid Contributor 或 Contributor），没有权限的请不要勾选。以后新建的 Key Vault 用脚本或门户接入，点击查看说明。 |
-| 378 | label | 要接入的 Key Vault |
-| 383 | tooltip | 列出当前账号能看到的所有订阅里的 Key Vault，每项下方显示资源组和订阅 ID。可以搜索，也可以全选。 |
+| 192 | label | 重复告警降频（M3 资源健康、M7 操作失败） |
+| 193 | 选项 | 开启（推荐） |
+| 194 | tooltip | 同一资源的同一告警反复出现时逐步降低提醒频率：24 小时内前 2 次照发，之后每天最多一次，7 天后每周一次，再 4 周后每月一次；连续 3 天没再出现就重新计数。会在中心资源组新建一个存储账户保存状态（需要允许公网访问，只用 Entra ID 认证）。M3 的"已恢复"卡片也依赖这个功能。[说明](https://github.com/linkinchow/azure-alert/blob/main/docs/repeat-suppression.md) |
+| 202 | 选项 | 关闭 |
+| 226 | label | ARG 读取权限（Reader）授予方式 |
+| 227 | 选项 | 按订阅授予 |
+| 235 | 选项 | 不授予（部署后用 scripts/grant-reader-mg.sh 在管理组上授予） |
+| 240 | tooltip | Pull 模块（M1 / M2 / M5 / M6 / M8）需要对被监控的订阅有 Reader 权限。按订阅授予会在每个选中的订阅上授予；也可以部署后在管理组上统一授予。 |
+| 245 | label | 要告警的订阅（Pull 模块读取范围，授予 Reader） |
+| 254 | tooltip | 这些订阅会给告警托管身份授予 Reader，Pull 模块只读取这些订阅。 |
+| 259 | label | 排除的订阅（可选） |
+| 268 | tooltip | 在管理组上授权时，管理组下不想告警的订阅。 |
+| 273 | label | 部署 M3 / M4 / M7 告警规则的订阅 |
+| 282 | tooltip | M3 / M4 / M7 的告警规则会建在这些订阅里，监控整个订阅。 |
+| 287 | label | M4 metric 规则的区域（逗号分隔，例如 eastus2,westus3） |
+| 292 | 校验提示 | 区域名用逗号分隔，例如 eastus2,westus3 |
+| 294 | tooltip | M4 指标规则按区域创建，多个区域用逗号分隔，例如 eastus2,westus3。 |
+| 299 | label | M4 CPU 告警阈值（%，5 分钟平均） |
+| 301 | tooltip | 平台 CPU 指标在部分规格上到不了 100%（实测 D2s_v5 最高 83.3%），建议 80。 |
+| 305 | 校验提示 | 1-100 的整数 |
+| 311 | label | M4 数据盘带宽使用率告警阈值（%，5 分钟平均） |
+| 322 | label | 首次运行静默（不推送历史事件） |
+| 324 | tooltip | 建议勾选：首次运行只记录当前已有的事件，不把历史事件一次性推进群。 |
+| 332 | 选项 | 否 |
+| 342 | label | 事件落地到 Log Analytics 自定义表 AzureAlertEvents_CL |
+| 344 | tooltip | 把标准事件同时写入 Log Analytics 自定义表 AzureAlertEvents_CL，便于以后统计和分析。会新建一个工作区。 |
+| 371 | 说明框 | 没有勾选 M9 Key Vault 到期提醒，这一步不需要填写，直接点"下一步"。 |
+| 380 | 说明框 | 选择要接入到期提醒的现有 Key Vault（列出当前账号能看到的所有订阅里的 Key Vault）。部署时会在每个选中的 Key Vault 上建一个事件订阅（<前缀>-kv-expiry），Event Grid 会在 Key Vault 所在资源组自动创建或复用它的系统主题，不改动 Key Vault 本身。部署人需要对这些资源组有 Event Grid 写权限（EventGrid Contributor 或 Contributor），没有权限的请不要勾选。以后新建的 Key Vault 用脚本或门户接入，点击查看说明。 |
+| 398 | label | 要接入的 Key Vault |
+| 403 | tooltip | 列出当前账号能看到的所有订阅里的 Key Vault，每项下方显示资源组和订阅 ID。可以搜索，也可以全选。 |
 
 ---
 

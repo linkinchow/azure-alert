@@ -12,6 +12,9 @@ param actionGroupId string
 param scopeId string = ''
 
 param enableResourceHealth bool = true
+
+@description('M3: also send Resource Health recovery events (level Informational, status Resolved) to the Router. The Router sends "已恢复" only for a resource whose alert card it sent and that is not in repeat suppression.')
+param enableResourceHealthRecovery bool = false
 param enableMetric bool = true
 param enableActivityFailure bool = true
 
@@ -84,6 +87,37 @@ resource resourceHealth 'Microsoft.Insights/activityLogAlerts@2020-10-01' = if (
             field: 'status'
             equals: st
           }]
+        }
+      ]
+    }
+    actions: actions
+  }
+}
+
+// Recovery (back to Available) is always level Informational, so the Critical-only rule above never sees it.
+resource resourceHealthRecovery 'Microsoft.Insights/activityLogAlerts@2020-10-01' = if (enableResourceHealth && enableResourceHealthRecovery) {
+  name: '${prefix}-m3-resource-health-recovery'
+  location: 'Global'
+  tags: tags
+  properties: {
+    enabled: true
+    description: 'azure-alert M3: Resource Health recovery events (Informational, Resolved); the Router sends only those that close an alert it sent.'
+    scopes: [
+      watchScope
+    ]
+    condition: {
+      allOf: [
+        {
+          field: 'category'
+          equals: 'ResourceHealth'
+        }
+        {
+          field: 'level'
+          equals: 'Informational'
+        }
+        {
+          field: 'status'
+          equals: 'Resolved'
         }
       ]
     }
