@@ -212,7 +212,10 @@ az deployment sub create -l eastus2 -n azure-alert -f main.bicep -p @deploy.loca
 - 按钮链接格式：`https://portal.azure.com/#create/Microsoft.Template/uri/<azuredeploy.json 的 URL 编码>/createUIDefinitionUri/<createUiDefinition.json 的 URL 编码>`。fork 本仓库后，把链接里的 `linkinchow/azure-alert/main` 换成自己的仓库和分支。
 - 验证情况（2026-11-02）：
   - 已验证：按向导输出构造参数，对 `azuredeploy.json` 执行 `az deployment sub validate` 和 `what-if` 均通过，计划创建的资源与勾选的模块一致。
-  - 未验证：向导本身在门户中的显示和交互。发布前可以在门户的 [Create UI Definition Sandbox](https://portal.azure.com/#view/Microsoft_Azure_CreateUIDef/SandboxBlade) 粘贴 `ui/createUiDefinition.json` 预览；发布后再用真实按钮完整走一遍。
+  - 已验证：
+    - 2026-11-03：用本页按钮在门户中完整走完向导并部署成功；
+    - 之后每次修改向导都在门户中复查过，包括审阅页显示所选模块、按分类路由的预填模板、M9 的 Key Vault 列表（2026-11-10）。
+  - 修改向导后，可以先在门户的 [Create UI Definition Sandbox](https://portal.azure.com/#view/Microsoft_Azure_CreateUIDef/SandboxBlade) 粘贴 `ui/createUiDefinition.json` 预览，推送后再用真实按钮走一遍。
 
 ### 添加、升级或删除模块
 
