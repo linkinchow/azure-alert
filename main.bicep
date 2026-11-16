@@ -111,6 +111,7 @@ var anyPush = (modules.?resourceHealth ?? false) || (modules.?metric ?? false) |
 var alertCategoryMap = union(
   {
     '${prefix}-m3-resource-health': 'ResourceHealth'
+    // Removed rule (version of 2026-11-14 only): if it is still there, its events map to ResourceHealth and the Router drops them.
     '${prefix}-m3-resource-health-recovery': 'ResourceHealth'
     '${prefix}-m7-activity-failure': 'ActivityFailure'
   },
@@ -266,8 +267,6 @@ module push 'modules/push/main.bicep' = [for (sub, i) in (anyPush ? union(pushSu
     actionGroupId: core.outputs.actionGroupId
     scopeId: pushScopeToResourceGroup ? '/subscriptions/${sub}/resourceGroups/${pushResourceGroupName}' : ''
     enableResourceHealth: modules.?resourceHealth ?? false
-    // Recovery events need the suppression state to match them to a sent alert.
-    enableResourceHealthRecovery: (modules.?resourceHealth ?? false) && (repeatSuppression.?enabled ?? true)
     enableMetric: modules.?metric ?? false
     enableActivityFailure: modules.?activityFailure ?? false
     metricRegions: metricRegions

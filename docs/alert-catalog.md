@@ -142,7 +142,6 @@
   - `level = Critical`（参数 `resourceHealthLevels`；平台导致的不可用是 Critical）
   - `status ∈ {Active, In Progress, Resolved}`（参数 `resourceHealthEventStatuses`；不含 Updated 进度更新）
   - Router 再按标题过滤掉 `resourceHealthExcludedTitles`（默认 Low priority machine preempted、Degraded、Unhealthy）。
-- **恢复事件**（开启重复告警降频时）：另一条规则 `<prefix>-m3-resource-health-recovery`，条件 `category = ResourceHealth`、`level = Informational`、`status = Resolved`。恢复到 Available 的事件都是 Informational 级别，上面那条只要 Critical 的规则收不到。
 - **频率**：Push，活动日志写入后触发。
 
 ### 4.1 子类与严重度
@@ -153,14 +152,14 @@
 | `ResourceHealth` | 资源健康 | `currentHealthStatus = Degraded` | 警告 |
 
 - 卡片标题：`<资源名>：<properties.title>`。正文：`properties.details`（为空时使用 title）。字段：健康状态（如"可用 → 不可用"）、发起方。
-- "已恢复"卡片（开启重复告警降频时）：只有这个资源的告警卡片确实发过、而且不在降频期间，才发一张绿色"已恢复"，标题沿用原告警。关闭降频时不发。
+- **不发"已恢复"**：资源健康的"恢复"不一定代表问题解决了。实测一个后端探测一直失败的 Front Door，资源健康状态每 10～40 分钟在"不可用"和"可用"之间来回切换，恢复事件的标题、原因都是 Unknown，没有通用的办法分辨真假，所以 M3 只通知不可用 / 降级（详见 [repeat-suppression.md](repeat-suppression.md#m3-不发已恢复)）。
 - 按官方说明，以下情况都会写活动日志：资源状态变为或恢复自不健康、不健康持续超过 15 分钟、提交了注释。因此同一个问题可能反复触发。开启**重复告警降频**（默认）后，同一资源的同一标题在 24 小时内前 2 次照发，之后每天、每周、每月最多一张，见 [repeat-suppression.md](repeat-suppression.md)。
-- 实际案例：健康探测配置错误、没有流量的 Front Door，会在"不可用"和"可用"之间每小时来回一次，每天 20～30 条 "Unavailable Backends"。
+- 实际案例：健康探测配置错误、没有流量的 Front Door，会在"不可用"和"可用"之间来回切换，每天 20～30 条 "Unavailable Backends"。
 
 ### 4.2 过滤掉的事件
 - 用户触发（`UserInitiated`）的事件，例如停止或解除分配 VM。
 - 用户触发的事件一般是 Informational 级别，被 `level = Critical` 条件过滤掉。
-- `Available`（恢复）只用于上面的"已恢复"卡片；`Unknown` 状态不推送（另外，官方说明转为 `Unknown` 的状态本来就不写活动日志）。
+- `Available`（恢复）、`Unknown` 状态不推送：恢复事件是 Informational 级别，规则本来就收不到；如果遗留的恢复规则还在，Router 也会丢弃。
 
 ### 4.3 如何知道某种资源会产生哪些 Resource Health 事件
 1. 在 **Resource types and health checks** 页面找到你的资源类型（如 `Microsoft.Network/expressRouteCircuits`、`Microsoft.ContainerService/managedClusters`、`Microsoft.Storage/storageAccounts`）。页面列出了平台对该类型执行的健康检查（Executed Checks），事件标题就来自这些检查。该页面**只列检查项，不列出完整的事件标题清单**。

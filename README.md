@@ -13,7 +13,7 @@
 | Core | — | 用户分配 MI、Router Logic App（Normalizer + 飞书卡片）、Action Group | 必选 |
 | M1 Service Health | ARG `servicehealthresources` | Pull，每分钟 | ✅ |
 | M2 Project Flash（VM / VMSS） | ARG `healthresourcechanges` | Pull，每分钟（VM、VMSS 各一个 Logic App） | ✅ |
-| M3 Resource Health（全资源类型） | Activity Log | 每个订阅一条 activity log alert；开启重复告警降频时再加一条恢复事件规则，用于发"已恢复" | ✅ |
+| M3 Resource Health（全资源类型） | Activity Log | 每个订阅一条 activity log alert（只通知不可用 / 降级，不发"已恢复"） | ✅ |
 | M4 Metric（VM CPU、数据盘带宽） | 平台指标 | 每个订阅 × 区域一条多资源 metric alert | ✅ |
 | M5 Quota（Compute） | ARG `quotaresources` | Pull，每 15 分钟 | ✅ |
 | M7 Activity 失败 | Activity Log | 每个订阅一条 activity log alert | ✅ |
@@ -278,7 +278,7 @@ python scripts/remove-module.py --prefix aa --resource-group rg-azure-alert --mo
 |---|---|
 | M1 | Logic App `<前缀>-m1-service-health`，指标告警 `<前缀>-m1-service-health-runs-failed` |
 | M2 | Logic App `<前缀>-m2-flash-vm`、`<前缀>-m2-flash-vmss`，以及各自的 `-runs-failed` 指标告警 |
-| M3 | 活动日志告警 `<前缀>-m3-resource-health`、`<前缀>-m3-resource-health-recovery`（每个推送订阅各一条） |
+| M3 | 活动日志告警 `<前缀>-m3-resource-health`（每个推送订阅一条）；2026-11-14 的版本还建过 `<前缀>-m3-resource-health-recovery`，也会一起找到并删除 |
 | M4 | 指标告警 `<前缀>-m4-vm-cpu-<区域>`、`<前缀>-m4-vm-datadisk-bw-<区域>`（每个推送订阅、每个区域各一对） |
 | M5 | Logic App `<前缀>-m5-quota`，指标告警 `<前缀>-m5-quota-runs-failed` |
 | M6 | Logic App `<前缀>-m6-scheduled-events`，指标告警 `<前缀>-m6-scheduled-events-runs-failed` |

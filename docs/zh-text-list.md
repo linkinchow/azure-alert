@@ -353,7 +353,7 @@ Flash 的分类和级别由 `modules/m2-flash/rules.json` 按 annotationName 决
 | 186 | 校验提示 | 请输入 JSON 对象：键用英文双引号，最后一项后面不要加逗号 |
 | 192 | label | 重复告警降频（M3 资源健康、M7 操作失败） |
 | 193 | 选项 | 开启（推荐） |
-| 194 | tooltip | 同一资源的同一告警反复出现时逐步降低提醒频率：24 小时内前 2 次照发，之后每天最多一次，7 天后每周一次，再 4 周后每月一次；连续 3 天没再出现就重新计数。会在中心资源组新建一个存储账户保存状态（需要允许公网访问，只用 Entra ID 认证）。M3 的"已恢复"卡片也依赖这个功能。[说明](https://github.com/linkinchow/azure-alert/blob/main/docs/repeat-suppression.md) |
+| 194 | tooltip | 同一资源的同一告警反复出现时逐步降低提醒频率：24 小时内前 2 次照发，之后每天最多一次，7 天后每周一次，再 4 周后每月一次；连续 3 天没再出现就重新计数。会在中心资源组新建一个存储账户保存状态（不开放公网，只允许 Router 访问）。[说明](https://github.com/linkinchow/azure-alert/blob/main/docs/repeat-suppression.md) |
 | 202 | 选项 | 关闭 |
 | 226 | label | ARG 读取权限（Reader）授予方式 |
 | 227 | 选项 | 按订阅授予 |

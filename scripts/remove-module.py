@@ -3,6 +3,7 @@
   python scripts/remove-module.py --module m5                       # list what would be deleted (nothing is changed)
   python scripts/remove-module.py --module m5 --module m7 --apply   # delete
   python scripts/remove-module.py --prefix aa --resource-group rg-azure-alert --module m4
+  python scripts/remove-module.py --module m3-recovery --apply      # the M3 recovery rules of the 2026-11-14 version
 
 Finds the module's resources with Azure Resource Graph across every subscription the signed-in account can read:
 name starts with "<prefix>-m<N>-", type is a Logic App, metric alert or activity log alert, and the resource group is the
@@ -21,6 +22,9 @@ import sys
 MODULES = {
     'm1': 'M1 service health', 'm2': 'M2 Project Flash', 'm3': 'M3 resource health', 'm4': 'M4 metrics',
     'm5': 'M5 compute quota', 'm6': 'M6 scheduled events', 'm7': 'M7 activity failures', 'm8': 'M8 AKS',
+    # Not a module: the M3 recovery rules <prefix>-m3-resource-health-recovery that only the 2026-11-14 version created.
+    # Later versions no longer create them (and the Router drops their events), but a redeployment does not delete them.
+    'm3-recovery': 'M3 recovery rules (2026-11-14 version only)',
 }
 TYPES = ['microsoft.logic/workflows', 'microsoft.insights/metricalerts', 'microsoft.insights/activitylogalerts']
 
@@ -48,7 +52,8 @@ def az(cmd):
 def find(module):
     q = ("resources"
          f" | where type in~ ({', '.join(repr(t) for t in TYPES)})"
-         f" | where name startswith '{args.prefix}-{module}-'"
+         + (f" | where name =~ '{args.prefix}-m3-resource-health-recovery'" if module == 'm3-recovery'
+            else f" | where name startswith '{args.prefix}-{module}-'") +
          f" | where resourceGroup in~ ({', '.join(repr(g) for g in sorted(groups))})"
          " | project id, name, type, resourceGroup, subscriptionId | order by subscriptionId asc, name asc")
     rows, skip = [], None
@@ -66,7 +71,8 @@ def find(module):
 found = []
 for m in args.module:
     rows = find(m)
-    print(f'== {MODULES[m]} ({args.prefix}-{m}-*): {len(rows)} resource(s)')
+    pattern = f'{args.prefix}-m3-resource-health-recovery' if m == 'm3-recovery' else f'{args.prefix}-{m}-*'
+    print(f'== {MODULES[m]} ({pattern}): {len(rows)} resource(s)')
     for r in rows:
         print(f"   {r['type'].split('/')[-1]:<18} {r['name']:<45} rg={r['resourceGroup']}  subscription={r['subscriptionId']}")
     found += rows
@@ -87,5 +93,6 @@ for r in found:
         failed += 1
         print('   FAILED ', r['name'], '-', (res.stderr.strip().splitlines() or [''])[-1][:200])
 print(f'{len(found) - failed} deleted, {failed} failed.',
+      '' if args.module == ['m3-recovery'] else
       'Set these modules to false (or untick them) in later deployments, otherwise they are created again.')
 sys.exit(1 if failed else 0)

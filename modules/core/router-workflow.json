@@ -310,8 +310,7 @@
             "value": {
               "send": true,
               "note": "",
-              "repeat": false,
-              "title": ""
+              "repeat": false
             }
           },
           "runAfter": {}
@@ -327,7 +326,7 @@
         },
         "Rs_mode": {
           "type": "Compose",
-          "inputs": "@if(and(equals(items('For_each_event')?['status'], 'Resolved'), equals(items('For_each_event')?['category'], 'ResourceHealth')), if(or(empty(parameters('stateTableUrl')), not(equals(parameters('repeatSuppression')?['enabled'], true))), 'drop', 'recovery'), if(or(empty(parameters('stateTableUrl')), not(equals(parameters('repeatSuppression')?['enabled'], true)), equals(items('For_each_event')?['status'], 'Resolved')), 'off', if(or(contains(parameters('repeatSuppression')?['categories'], coalesce(items('For_each_event')?['category'], '-')), contains(parameters('repeatSuppression')?['categories'], first(split(coalesce(items('For_each_event')?['category'], '-'), '.')))), 'alert', 'off')))",
+          "inputs": "@if(and(equals(items('For_each_event')?['status'], 'Resolved'), equals(items('For_each_event')?['category'], 'ResourceHealth')), 'drop', if(or(empty(parameters('stateTableUrl')), not(equals(parameters('repeatSuppression')?['enabled'], true)), equals(items('For_each_event')?['status'], 'Resolved')), 'off', if(or(contains(parameters('repeatSuppression')?['categories'], coalesce(items('For_each_event')?['category'], '-')), contains(parameters('repeatSuppression')?['categories'], first(split(coalesce(items('For_each_event')?['category'], '-'), '.')))), 'alert', 'off')))",
           "runAfter": {
             "Rs_now": [
               "Succeeded"
@@ -336,18 +335,9 @@
         },
         "Rs_key": {
           "type": "Compose",
-          "inputs": "@concat(toLower(coalesce(items('For_each_event')?['resource']?['id'], '-')), '|', coalesce(items('For_each_event')?['category'], '-'), '|', if(equals(outputs('Rs_mode'), 'recovery'), '#resource', coalesce(items('For_each_event')?['title'], '')))",
+          "inputs": "@concat(toLower(coalesce(items('For_each_event')?['resource']?['id'], '-')), '|', coalesce(items('For_each_event')?['category'], '-'), '|', coalesce(items('For_each_event')?['title'], ''))",
           "runAfter": {
             "Rs_mode": [
-              "Succeeded"
-            ]
-          }
-        },
-        "Rs_res_key": {
-          "type": "Compose",
-          "inputs": "@concat(toLower(coalesce(items('For_each_event')?['resource']?['id'], '-')), '|', coalesce(items('For_each_event')?['category'], '-'), '|#resource')",
-          "runAfter": {
-            "Rs_key": [
               "Succeeded"
             ]
           }
@@ -356,16 +346,7 @@
           "type": "Compose",
           "inputs": "@replace(replace(replace(base64(outputs('Rs_key')), '/', '_'), '+', '-'), '=', '')",
           "runAfter": {
-            "Rs_res_key": [
-              "Succeeded"
-            ]
-          }
-        },
-        "Rs_res_row": {
-          "type": "Compose",
-          "inputs": "@replace(replace(replace(base64(outputs('Rs_res_key')), '/', '_'), '+', '-'), '=', '')",
-          "runAfter": {
-            "Rs_row": [
+            "Rs_key": [
               "Succeeded"
             ]
           }
@@ -429,249 +410,134 @@
                 ]
               }
             },
-            "Rs_alert_or_recovery": {
-              "type": "If",
-              "expression": {
-                "and": [
-                  {
-                    "equals": [
-                      "@outputs('Rs_mode')",
-                      "alert"
-                    ]
-                  }
-                ]
-              },
-              "actions": {
-                "Rs_fresh": {
-                  "type": "Compose",
-                  "inputs": "@or(empty(outputs('Rs_prev')?['lastSeen']), greater(div(sub(ticks(outputs('Rs_now')), ticks(outputs('Rs_prev')?['lastSeen'])), 10000000), mul(int(parameters('repeatSuppression')?['quietDays']), 86400)))",
-                  "runAfter": {}
-                },
-                "Rs_first": {
-                  "type": "Compose",
-                  "inputs": "@if(outputs('Rs_fresh'), outputs('Rs_now'), outputs('Rs_prev')?['firstSeen'])",
-                  "runAfter": {
-                    "Rs_fresh": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Rs_total": {
-                  "type": "Compose",
-                  "inputs": "@if(outputs('Rs_fresh'), 1, add(int(outputs('Rs_prev')?['total']), 1))",
-                  "runAfter": {
-                    "Rs_first": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Rs_age": {
-                  "type": "Compose",
-                  "inputs": "@div(sub(ticks(outputs('Rs_now')), ticks(outputs('Rs_first'))), 10000000)",
-                  "runAfter": {
-                    "Rs_total": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Rs_in_burst": {
-                  "type": "Compose",
-                  "inputs": "@and(lessOrEquals(outputs('Rs_total'), int(parameters('repeatSuppression')?['burstCount'])), lessOrEquals(outputs('Rs_age'), mul(int(parameters('repeatSuppression')?['burstWindowHours']), 3600)))",
-                  "runAfter": {
-                    "Rs_age": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Rs_interval": {
-                  "type": "Compose",
-                  "inputs": "@if(less(outputs('Rs_age'), mul(int(parameters('repeatSuppression')?['dailyDays']), 86400)), 86400, if(less(outputs('Rs_age'), mul(add(int(parameters('repeatSuppression')?['dailyDays']), mul(int(parameters('repeatSuppression')?['weeklyWeeks']), 7)), 86400)), 604800, 2592000))",
-                  "runAfter": {
-                    "Rs_in_burst": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Rs_send": {
-                  "type": "Compose",
-                  "inputs": "@or(outputs('Rs_in_burst'), and(not(outputs('Rs_fresh')), greaterOrEquals(div(sub(ticks(outputs('Rs_now')), ticks(outputs('Rs_prev')?['lastSent'])), 10000000), outputs('Rs_interval'))))",
-                  "runAfter": {
-                    "Rs_interval": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Rs_skipped": {
-                  "type": "Compose",
-                  "inputs": "@if(outputs('Rs_fresh'), 0, int(coalesce(outputs('Rs_prev')?['skipped'], 0)))",
-                  "runAfter": {
-                    "Rs_send": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Rs_note": {
-                  "type": "Compose",
-                  "inputs": "@if(and(outputs('Rs_send'), not(outputs('Rs_in_burst'))), concat('**重复提醒**：上次提醒（', convertTimeZone(outputs('Rs_prev')?['lastSent'], 'UTC', 'China Standard Time', 'MM-dd HH:mm'), '）以来又发生 ', string(add(outputs('Rs_skipped'), 1)), ' 次；首次出现 ', convertTimeZone(outputs('Rs_first'), 'UTC', 'China Standard Time', 'MM-dd HH:mm'), '，累计 ', string(outputs('Rs_total')), ' 次。同一告警之后', if(equals(outputs('Rs_interval'), 86400), '每天', if(equals(outputs('Rs_interval'), 604800), '每周', '每月')), '最多提醒一次。'), if(and(outputs('Rs_in_burst'), equals(outputs('Rs_total'), int(parameters('repeatSuppression')?['burstCount'])), greater(int(parameters('repeatSuppression')?['burstCount']), 1)), concat('**提示**：同一告警 ', string(parameters('repeatSuppression')?['burstWindowHours']), ' 小时内已出现 ', string(outputs('Rs_total')), ' 次，之后改为每天最多提醒一次。'), ''))",
-                  "runAfter": {
-                    "Rs_skipped": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Rs_put": {
-                  "type": "Http",
-                  "inputs": {
-                    "method": "PUT",
-                    "uri": "@{parameters('stateTableUrl')}(PartitionKey='s',RowKey='@{outputs('Rs_row')}')",
-                    "headers": {
-                      "Accept": "application/json;odata=nometadata",
-                      "x-ms-version": "2019-02-02",
-                      "Content-Type": "application/json"
-                    },
-                    "authentication": {
-                      "type": "ManagedServiceIdentity",
-                      "audience": "https://storage.azure.com/"
-                    },
-                    "body": {
-                      "key": "@{outputs('Rs_key')}",
-                      "category": "@{items('For_each_event')?['category']}",
-                      "title": "@{items('For_each_event')?['title']}",
-                      "resourceId": "@{items('For_each_event')?['resource']?['id']}",
-                      "firstSeen": "@{outputs('Rs_first')}",
-                      "lastSeen": "@{outputs('Rs_now')}",
-                      "lastSent": "@{if(outputs('Rs_send'), outputs('Rs_now'), outputs('Rs_prev')?['lastSent'])}",
-                      "total": "@outputs('Rs_total')",
-                      "skipped": "@if(outputs('Rs_send'), 0, add(outputs('Rs_skipped'), 1))"
-                    }
-                  },
-                  "runAfter": {
-                    "Rs_note": [
-                      "Succeeded"
-                    ]
-                  }
-                },
-                "Rs_put_res": {
-                  "type": "Http",
-                  "inputs": {
-                    "method": "PUT",
-                    "uri": "@{parameters('stateTableUrl')}(PartitionKey='s',RowKey='@{outputs('Rs_res_row')}')",
-                    "headers": {
-                      "Accept": "application/json;odata=nometadata",
-                      "x-ms-version": "2019-02-02",
-                      "Content-Type": "application/json"
-                    },
-                    "authentication": {
-                      "type": "ManagedServiceIdentity",
-                      "audience": "https://storage.azure.com/"
-                    },
-                    "body": {
-                      "key": "@{outputs('Rs_res_key')}",
-                      "lastTitle": "@{items('For_each_event')?['title']}",
-                      "lastSeen": "@{outputs('Rs_now')}",
-                      "notify": "@and(outputs('Rs_send'), outputs('Rs_in_burst'))"
-                    }
-                  },
-                  "runAfter": {
-                    "Rs_put": [
-                      "Succeeded",
-                      "Failed",
-                      "TimedOut"
-                    ]
-                  }
-                },
-                "Set_rs_alert": {
-                  "type": "SetVariable",
-                  "inputs": {
-                    "name": "rs",
-                    "value": {
-                      "send": "@or(not(outputs('Rs_readable')), outputs('Rs_send'))",
-                      "note": "@{if(outputs('Rs_readable'), outputs('Rs_note'), '')}",
-                      "repeat": "@and(outputs('Rs_readable'), outputs('Rs_send'), not(outputs('Rs_in_burst')))",
-                      "title": ""
-                    }
-                  },
-                  "runAfter": {
-                    "Rs_put_res": [
-                      "Succeeded",
-                      "Failed",
-                      "TimedOut"
-                    ]
-                  }
-                }
-              },
-              "else": {
-                "actions": {
-                  "Rs_rec_send": {
-                    "type": "Compose",
-                    "inputs": "@and(equals(outputs('Rs_get')?['statusCode'], 200), equals(outputs('Rs_prev')?['notify'], true))",
-                    "runAfter": {}
-                  },
-                  "Set_rs_recovery": {
-                    "type": "SetVariable",
-                    "inputs": {
-                      "name": "rs",
-                      "value": {
-                        "send": "@outputs('Rs_rec_send')",
-                        "note": "",
-                        "repeat": false,
-                        "title": "@{coalesce(outputs('Rs_prev')?['lastTitle'], '')}"
-                      }
-                    },
-                    "runAfter": {
-                      "Rs_rec_write": [
-                        "Succeeded",
-                        "Failed",
-                        "TimedOut"
-                      ]
-                    }
-                  },
-                  "Rs_rec_write": {
-                    "type": "If",
-                    "expression": {
-                      "and": [
-                        {
-                          "equals": [
-                            "@outputs('Rs_rec_send')",
-                            true
-                          ]
-                        }
-                      ]
-                    },
-                    "actions": {
-                      "Rs_rec_put": {
-                        "type": "Http",
-                        "inputs": {
-                          "method": "PUT",
-                          "uri": "@{parameters('stateTableUrl')}(PartitionKey='s',RowKey='@{outputs('Rs_row')}')",
-                          "headers": {
-                            "Accept": "application/json;odata=nometadata",
-                            "x-ms-version": "2019-02-02",
-                            "Content-Type": "application/json"
-                          },
-                          "authentication": {
-                            "type": "ManagedServiceIdentity",
-                            "audience": "https://storage.azure.com/"
-                          },
-                          "body": "@setProperty(setProperty(outputs('Rs_prev'), 'notify', false), 'recoveredAt', outputs('Rs_now'))"
-                        },
-                        "runAfter": {}
-                      }
-                    },
-                    "else": {
-                      "actions": {}
-                    },
-                    "runAfter": {
-                      "Rs_rec_send": [
-                        "Succeeded"
-                      ]
-                    }
-                  }
-                }
-              },
+            "Rs_fresh": {
+              "type": "Compose",
+              "inputs": "@or(empty(outputs('Rs_prev')?['lastSeen']), greater(div(sub(ticks(outputs('Rs_now')), ticks(outputs('Rs_prev')?['lastSeen'])), 10000000), mul(int(parameters('repeatSuppression')?['quietDays']), 86400)))",
               "runAfter": {
                 "Rs_prev": [
                   "Succeeded"
+                ]
+              }
+            },
+            "Rs_first": {
+              "type": "Compose",
+              "inputs": "@if(outputs('Rs_fresh'), outputs('Rs_now'), outputs('Rs_prev')?['firstSeen'])",
+              "runAfter": {
+                "Rs_fresh": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Rs_total": {
+              "type": "Compose",
+              "inputs": "@if(outputs('Rs_fresh'), 1, add(int(outputs('Rs_prev')?['total']), 1))",
+              "runAfter": {
+                "Rs_first": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Rs_age": {
+              "type": "Compose",
+              "inputs": "@div(sub(ticks(outputs('Rs_now')), ticks(outputs('Rs_first'))), 10000000)",
+              "runAfter": {
+                "Rs_total": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Rs_in_burst": {
+              "type": "Compose",
+              "inputs": "@and(lessOrEquals(outputs('Rs_total'), int(parameters('repeatSuppression')?['burstCount'])), lessOrEquals(outputs('Rs_age'), mul(int(parameters('repeatSuppression')?['burstWindowHours']), 3600)))",
+              "runAfter": {
+                "Rs_age": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Rs_interval": {
+              "type": "Compose",
+              "inputs": "@if(less(outputs('Rs_age'), mul(int(parameters('repeatSuppression')?['dailyDays']), 86400)), 86400, if(less(outputs('Rs_age'), mul(add(int(parameters('repeatSuppression')?['dailyDays']), mul(int(parameters('repeatSuppression')?['weeklyWeeks']), 7)), 86400)), 604800, 2592000))",
+              "runAfter": {
+                "Rs_in_burst": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Rs_send": {
+              "type": "Compose",
+              "inputs": "@or(outputs('Rs_in_burst'), and(not(outputs('Rs_fresh')), greaterOrEquals(div(sub(ticks(outputs('Rs_now')), ticks(outputs('Rs_prev')?['lastSent'])), 10000000), outputs('Rs_interval'))))",
+              "runAfter": {
+                "Rs_interval": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Rs_skipped": {
+              "type": "Compose",
+              "inputs": "@if(outputs('Rs_fresh'), 0, int(coalesce(outputs('Rs_prev')?['skipped'], 0)))",
+              "runAfter": {
+                "Rs_send": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Rs_note": {
+              "type": "Compose",
+              "inputs": "@if(and(outputs('Rs_send'), not(outputs('Rs_in_burst'))), concat('**重复提醒**：上次提醒（', convertTimeZone(outputs('Rs_prev')?['lastSent'], 'UTC', 'China Standard Time', 'MM-dd HH:mm'), '）以来又发生 ', string(add(outputs('Rs_skipped'), 1)), ' 次；首次出现 ', convertTimeZone(outputs('Rs_first'), 'UTC', 'China Standard Time', 'MM-dd HH:mm'), '，累计 ', string(outputs('Rs_total')), ' 次。同一告警之后', if(equals(outputs('Rs_interval'), 86400), '每天', if(equals(outputs('Rs_interval'), 604800), '每周', '每月')), '最多提醒一次。'), if(and(outputs('Rs_in_burst'), equals(outputs('Rs_total'), int(parameters('repeatSuppression')?['burstCount'])), greater(int(parameters('repeatSuppression')?['burstCount']), 1)), concat('**提示**：同一告警 ', string(parameters('repeatSuppression')?['burstWindowHours']), ' 小时内已出现 ', string(outputs('Rs_total')), ' 次，之后改为每天最多提醒一次。'), ''))",
+              "runAfter": {
+                "Rs_skipped": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Rs_put": {
+              "type": "Http",
+              "inputs": {
+                "method": "PUT",
+                "uri": "@{parameters('stateTableUrl')}(PartitionKey='s',RowKey='@{outputs('Rs_row')}')",
+                "headers": {
+                  "Accept": "application/json;odata=nometadata",
+                  "x-ms-version": "2019-02-02",
+                  "Content-Type": "application/json"
+                },
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "audience": "https://storage.azure.com/"
+                },
+                "body": {
+                  "key": "@{outputs('Rs_key')}",
+                  "category": "@{items('For_each_event')?['category']}",
+                  "title": "@{items('For_each_event')?['title']}",
+                  "resourceId": "@{items('For_each_event')?['resource']?['id']}",
+                  "firstSeen": "@{outputs('Rs_first')}",
+                  "lastSeen": "@{outputs('Rs_now')}",
+                  "lastSent": "@{if(outputs('Rs_send'), outputs('Rs_now'), outputs('Rs_prev')?['lastSent'])}",
+                  "total": "@outputs('Rs_total')",
+                  "skipped": "@if(outputs('Rs_send'), 0, add(outputs('Rs_skipped'), 1))"
+                }
+              },
+              "runAfter": {
+                "Rs_note": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Set_rs_alert": {
+              "type": "SetVariable",
+              "inputs": {
+                "name": "rs",
+                "value": {
+                  "send": "@or(not(outputs('Rs_readable')), outputs('Rs_send'))",
+                  "note": "@{if(outputs('Rs_readable'), outputs('Rs_note'), '')}",
+                  "repeat": "@and(outputs('Rs_readable'), outputs('Rs_send'), not(outputs('Rs_in_burst')))"
+                }
+              },
+              "runAfter": {
+                "Rs_put": [
+                  "Succeeded",
+                  "Failed",
+                  "TimedOut"
                 ]
               }
             }
@@ -685,8 +551,7 @@
                   "value": {
                     "send": "@not(equals(outputs('Rs_mode'), 'drop'))",
                     "note": "",
-                    "repeat": false,
-                    "title": ""
+                    "repeat": false
                   }
                 },
                 "runAfter": {}
@@ -694,7 +559,7 @@
             }
           },
           "runAfter": {
-            "Rs_res_row": [
+            "Rs_row": [
               "Succeeded"
             ]
           }
@@ -771,7 +636,7 @@
                     "template": "@{if(equals(items('For_each_event')?['status'], 'Resolved'), 'green', if(equals(items('For_each_event')?['severity'], 'Critical'), 'red', if(equals(items('For_each_event')?['severity'], 'Warning'), 'orange', 'blue')))}",
                     "title": {
                       "tag": "plain_text",
-                      "content": "@{concat(if(equals(items('For_each_event')?['status'], 'Resolved'), '已恢复', if(equals(items('For_each_event')?['severity'], 'Critical'), '严重', if(equals(items('For_each_event')?['severity'], 'Warning'), '警告', '提示'))), '｜', coalesce(parameters('categoryNames')?[coalesce(items('For_each_event')?['category'], '-')], items('For_each_event')?['category']), '｜', concat(if(equals(variables('rs')?['repeat'], true), '【重复】', ''), take(if(empty(variables('rs')?['title']), coalesce(items('For_each_event')?['title'], ''), variables('rs')?['title']), 150)), if(greater(length(outputs('Summary_parts')), 1), concat('（1/', string(length(outputs('Summary_parts'))), '）'), ''))}"
+                      "content": "@{concat(if(equals(items('For_each_event')?['status'], 'Resolved'), '已恢复', if(equals(items('For_each_event')?['severity'], 'Critical'), '严重', if(equals(items('For_each_event')?['severity'], 'Warning'), '警告', '提示'))), '｜', coalesce(parameters('categoryNames')?[coalesce(items('For_each_event')?['category'], '-')], items('For_each_event')?['category']), '｜', concat(if(equals(variables('rs')?['repeat'], true), '【重复】', ''), take(coalesce(items('For_each_event')?['title'], ''), 150)), if(greater(length(outputs('Summary_parts')), 1), concat('（1/', string(length(outputs('Summary_parts'))), '）'), ''))}"
                     }
                   },
                   "elements": [
@@ -1068,7 +933,7 @@
                       "template": "@{if(equals(items('For_each_event')?['status'], 'Resolved'), 'green', if(equals(items('For_each_event')?['severity'], 'Critical'), 'red', if(equals(items('For_each_event')?['severity'], 'Warning'), 'orange', 'blue')))}",
                       "title": {
                         "tag": "plain_text",
-                        "content": "@{concat(if(equals(items('For_each_event')?['status'], 'Resolved'), '已恢复', if(equals(items('For_each_event')?['severity'], 'Critical'), '严重', if(equals(items('For_each_event')?['severity'], 'Warning'), '警告', '提示'))), '｜', coalesce(parameters('categoryNames')?[coalesce(items('For_each_event')?['category'], '-')], items('For_each_event')?['category']), '｜', concat(if(equals(variables('rs')?['repeat'], true), '【重复】', ''), take(if(empty(variables('rs')?['title']), coalesce(items('For_each_event')?['title'], ''), variables('rs')?['title']), 150)), '（续 ', string(add(item(), 1)), '/', string(length(outputs('Summary_parts'))), '）')}"
+                        "content": "@{concat(if(equals(items('For_each_event')?['status'], 'Resolved'), '已恢复', if(equals(items('For_each_event')?['severity'], 'Critical'), '严重', if(equals(items('For_each_event')?['severity'], 'Warning'), '警告', '提示'))), '｜', coalesce(parameters('categoryNames')?[coalesce(items('For_each_event')?['category'], '-')], items('For_each_event')?['category']), '｜', concat(if(equals(variables('rs')?['repeat'], true), '【重复】', ''), take(coalesce(items('For_each_event')?['title'], ''), 150)), '（续 ', string(add(item(), 1)), '/', string(length(outputs('Summary_parts'))), '）')}"
                       }
                     },
                     "elements": [
@@ -1465,8 +1330,7 @@
             "value": {
               "send": true,
               "note": "",
-              "repeat": false,
-              "title": ""
+              "repeat": false
             }
           }
         ]
