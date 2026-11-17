@@ -139,6 +139,7 @@ module core 'modules/core/main.bicep' = {
     sinkWorkspaceResourceId: sinkWorkspaceResourceId
     feishuMaxAttempts: feishuMaxAttempts
     repeatSuppression: repeatSuppression
+    deployedAt: deploymentTime
   }
 }
 

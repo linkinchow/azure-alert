@@ -52,6 +52,7 @@ az deployment sub create -l <区域> -n azure-alert -f main.bicep -p @upgrade.lo
 
 | 日期 | 变化 | 对已部署客户的影响 |
 |---|---|---|
+| 2026-11-17 | 降频状态表读写失败时，触发"告警系统自检"（原来只是照常发送，没有任何提示）；部署后 60 分钟内不报 | 无需操作，下次升级时自动带上 |
 | 2026-11-16 | **去掉 M3 "已恢复"卡片**：资源健康的恢复事件经常是假恢复（状态来回切换，原因 Unknown），不再发送；也不再建 M3 恢复规则 | 装过 2026-11-14 版本的：升级后用 `python scripts/remove-module.py --prefix <前缀> --resource-group <中心资源组> --module m3-recovery --apply` 删除遗留的 `<前缀>-m3-resource-health-recovery` 规则（不删也不会发卡片，只是 Router 会白跑一次） |
 | 2026-11-14 | **重复告警降频**（M3 / M7）：同一告警 24 小时内前 2 次照发，之后每天、每周、每月最多一张。见 [repeat-suppression.md](repeat-suppression.md) | 新增一个不开放公网的存储账户（只放行 Router）、Router 的系统分配身份和它在这个存储账户上的一个角色分配。不想要可以在向导里关闭，或参数 `repeatSuppression = { "enabled": false }` |
 | 2026-11-10 | M3 / M7 卡片的"时间"改为事件实际发生的时间（原来是告警触发时间，晚 5～30 分钟） | 无需操作 |

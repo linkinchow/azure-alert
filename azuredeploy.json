@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "16356102037097973695"
+      "templateHash": "4277761573053795669"
     }
   },
   "parameters": {
@@ -260,6 +260,9 @@
           },
           "repeatSuppression": {
             "value": "[parameters('repeatSuppression')]"
+          },
+          "deployedAt": {
+            "value": "[parameters('deploymentTime')]"
           }
         },
         "template": {
@@ -269,7 +272,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "15436404610575251112"
+              "templateHash": "17446477599855326755"
             }
           },
           "parameters": {
@@ -345,6 +348,13 @@
               "metadata": {
                 "description": "Repeat suppression: the same alert (resource + category + title) is sent at once, then at most once a day, then once a week, then once a month; it starts over after quietDays without an occurrence. State is kept in a storage table in this resource group. Fields (defaults): enabled (true), categories ([ResourceHealth, ActivityFailure]; category names or prefixes before the dot), burstCount (2, sent as usual within burstWindowHours, 24), dailyDays (7), weeklyWeeks (4), quietDays (3). Only the fields given override the defaults."
               }
+            },
+            "deployedAt": {
+              "type": "string",
+              "defaultValue": "[utcNow('yyyy-MM-ddTHH:mm:ssZ')]",
+              "metadata": {
+                "description": "Deployment time (UTC). Within 60 minutes after it, state table access errors (role assignment not effective yet) do not fail the Router run."
+              }
             }
           },
           "variables": {
@@ -393,6 +403,14 @@
                 "stateTableUrl": {
                   "type": "String",
                   "defaultValue": ""
+                },
+                "deployedAt": {
+                  "type": "String",
+                  "defaultValue": ""
+                },
+                "stateGraceMinutes": {
+                  "type": "Int",
+                  "defaultValue": 60
                 }
               },
               "triggers": {
@@ -890,6 +908,73 @@
                               "TimedOut"
                             ]
                           }
+                        },
+                        "Rs_read_error": {
+                          "type": "If",
+                          "expression": {
+                            "and": [
+                              {
+                                "equals": [
+                                  "@outputs('Rs_readable')",
+                                  false
+                                ]
+                              }
+                            ]
+                          },
+                          "actions": {
+                            "Count_read_error": {
+                              "type": "IncrementVariable",
+                              "inputs": {
+                                "name": "stateErrors",
+                                "value": 1
+                              },
+                              "runAfter": {}
+                            }
+                          },
+                          "else": {
+                            "actions": {}
+                          },
+                          "runAfter": {
+                            "Rs_readable": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Rs_write_error": {
+                          "type": "If",
+                          "expression": {
+                            "and": [
+                              {
+                                "not": {
+                                  "equals": [
+                                    "@or(equals(outputs('Rs_put')?['statusCode'], 204), equals(outputs('Rs_put')?['statusCode'], 200))",
+                                    true
+                                  ]
+                                }
+                              }
+                            ]
+                          },
+                          "actions": {
+                            "Count_write_error": {
+                              "type": "IncrementVariable",
+                              "inputs": {
+                                "name": "stateErrors",
+                                "value": 1
+                              },
+                              "runAfter": {}
+                            }
+                          },
+                          "else": {
+                            "actions": {}
+                          },
+                          "runAfter": {
+                            "Rs_put": [
+                              "Succeeded",
+                              "Failed",
+                              "TimedOut",
+                              "Skipped"
+                            ]
+                          }
                         }
                       },
                       "else": {
@@ -1336,7 +1421,7 @@
                     }
                   },
                   "runAfter": {
-                    "Init_rs": [
+                    "Init_state_errors": [
                       "Succeeded"
                     ]
                   }
@@ -1419,11 +1504,27 @@
                 "Any_failures": {
                   "type": "If",
                   "expression": {
-                    "and": [
+                    "or": [
                       {
                         "greater": [
                           "@length(variables('failures'))",
                           0
+                        ]
+                      },
+                      {
+                        "and": [
+                          {
+                            "greater": [
+                              "@variables('stateErrors')",
+                              0
+                            ]
+                          },
+                          {
+                            "equals": [
+                              "@or(empty(parameters('deployedAt')), greater(ticks(utcNow()), ticks(addMinutes(parameters('deployedAt'), parameters('stateGraceMinutes')))))",
+                              true
+                            ]
+                          }
                         ]
                       }
                     ]
@@ -1434,8 +1535,8 @@
                       "inputs": {
                         "runStatus": "Failed",
                         "runError": {
-                          "code": "DeliveryFailed",
-                          "message": "@{string(variables('failures'))}"
+                          "code": "@{if(greater(length(variables('failures')), 0), 'DeliveryFailed', 'StateTableUnavailable')}",
+                          "message": "@{concat(if(greater(length(variables('failures')), 0), concat('Feishu delivery failed: ', string(variables('failures')), ' '), ''), if(greater(variables('stateErrors'), 0), concat('Repeat-suppression state table read/write failed ', string(variables('stateErrors')), ' time(s) in this run (storage network rule, role assignment or account changed?). Alerts were still sent, without suppression.'), ''))}"
                         }
                       },
                       "runAfter": {}
@@ -1690,6 +1791,23 @@
                       "Succeeded"
                     ]
                   }
+                },
+                "Init_state_errors": {
+                  "type": "InitializeVariable",
+                  "inputs": {
+                    "variables": [
+                      {
+                        "name": "stateErrors",
+                        "type": "integer",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  "runAfter": {
+                    "Init_rs": [
+                      "Succeeded"
+                    ]
+                  }
                 }
               },
               "outputs": {}
@@ -1809,6 +1927,9 @@
                   },
                   "stateTableUrl": {
                     "value": "[if(variables('suppression').enabled, variables('stateTableUrl'), '')]"
+                  },
+                  "deployedAt": {
+                    "value": "[parameters('deployedAt')]"
                   },
                   "categoryNames": {
                     "value": "[union(variables('defaultCategoryNames'), parameters('categoryNames'))]"

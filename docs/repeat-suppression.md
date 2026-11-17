@@ -77,7 +77,7 @@ python scripts/remove-module.py --prefix <前缀> --resource-group <中心资源
 - **网络**：公网访问"已禁用"，也**不**开"允许受信任的 Microsoft 服务"例外，只用一条**资源实例规则**放行 Router（`Microsoft.Logic/workflows` `<前缀>-router`）这一个资源，其他任何资源和 IP 都连不上（已实测：去掉这条规则后 Router 被拒绝，403）。
 - **认证**：禁用访问密钥，只能用 Entra ID 认证。Router 用自己的**系统分配托管身份**读写（资源实例规则按资源的系统分配身份识别），角色是 Storage Table Data Contributor，只授予在这个存储账户上。Router 的其他操作仍用原来的用户分配身份。
 - 费用每月不到 1 美元。
-- **读写失败时照常发送**，宁可多发，不会漏发。
+- **读写失败时照常发送**，宁可多发，不会漏发。同时这次 Router 运行会标为失败（原因写明"降频状态表访问失败"），触发已有的"告警系统自检"告警，群里会收到一张自检卡片，问题解决后自动恢复。这样降频不会悄悄失效。部署后 60 分钟内不报，因为新建的角色权限要几分钟才生效。
 
 因为没有公网访问，在自己电脑上用 Azure CLI 或门户的"存储浏览器"看不到表里的数据，这是正常的。需要查看或清除时，见文末。
 
@@ -113,4 +113,4 @@ python scripts/remove-module.py --prefix <前缀> --resource-group <中心资源
 az rest --method delete --url "https://management.azure.com/subscriptions/<订阅 ID>/resourceGroups/rg-azure-alert/providers/Microsoft.Storage/storageAccounts/<存储账户名>/tableServices/default/tables/alertstate?api-version=2024-01-01"
 ```
 
-删除到重新部署之间，所有告警照常发送，不会漏。
+删除到重新部署之间，所有告警照常发送，不会漏；因为表不存在，这段时间会收到"告警系统自检"卡片，重新部署后自动恢复。

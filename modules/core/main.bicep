@@ -37,6 +37,9 @@ param feishuMaxAttempts int = 8
 @description('Repeat suppression: the same alert (resource + category + title) is sent at once, then at most once a day, then once a week, then once a month; it starts over after quietDays without an occurrence. State is kept in a storage table in this resource group. Fields (defaults): enabled (true), categories ([ResourceHealth, ActivityFailure]; category names or prefixes before the dot), burstCount (2, sent as usual within burstWindowHours, 24), dailyDays (7), weeklyWeeks (4), quietDays (3). Only the fields given override the defaults.')
 param repeatSuppression object = {}
 
+@description('Deployment time (UTC). Within 60 minutes after it, state table access errors (role assignment not effective yet) do not fail the Router run.')
+param deployedAt string = utcNow('yyyy-MM-ddTHH:mm:ssZ')
+
 var defaultCategoryNames = {
   'Flash.HostFailure': '主机故障'
   'Flash.DegradedHardware': '硬件降级'
@@ -172,6 +175,9 @@ resource router 'Microsoft.Logic/workflows@2019-05-01' = {
       }
       stateTableUrl: {
         value: suppression.enabled ? stateTableUrl : ''
+      }
+      deployedAt: {
+        value: deployedAt
       }
       categoryNames: {
         value: union(defaultCategoryNames, categoryNames)

@@ -298,7 +298,7 @@ python scripts/remove-module.py --prefix aa --resource-group rg-azure-alert --mo
   - 不需要额外的 Storage 资源和授权。（Storage 关闭公网访问时，Consumption Logic App 仍可通过"受信任的 Azure 服务"例外访问，但要额外授予 Blob 数据角色，所以没有采用。）
 - **重复告警降频**：Push 告警（M3 / M7）没有可以复用的运行历史状态，所以单独用一张存储表保存每个告警的计数和时间。
   - 存储账户公网访问已禁用、禁用访问密钥，只用一条资源实例规则放行 Router 这一个资源；Router 用自己的系统分配托管身份读写。
-  - 读写失败时照常发送，不会漏告警。规则和配置见 [docs/repeat-suppression.md](docs/repeat-suppression.md)。
+  - 读写失败时照常发送，不会漏告警；同时 Router 这次运行标为失败，触发"告警系统自检"，避免降频悄悄失效（部署后 60 分钟内不报）。规则和配置见 [docs/repeat-suppression.md](docs/repeat-suppression.md)。
 - **ARG 限制**（实现时踩到的）：
   - 不支持 `let`、`datatable`。
   - `title`、`limit`、`kind` 是保留字。

@@ -43,6 +43,14 @@
     "stateTableUrl": {
       "type": "String",
       "defaultValue": ""
+    },
+    "deployedAt": {
+      "type": "String",
+      "defaultValue": ""
+    },
+    "stateGraceMinutes": {
+      "type": "Int",
+      "defaultValue": 60
     }
   },
   "triggers": {
@@ -540,6 +548,73 @@
                   "TimedOut"
                 ]
               }
+            },
+            "Rs_read_error": {
+              "type": "If",
+              "expression": {
+                "and": [
+                  {
+                    "equals": [
+                      "@outputs('Rs_readable')",
+                      false
+                    ]
+                  }
+                ]
+              },
+              "actions": {
+                "Count_read_error": {
+                  "type": "IncrementVariable",
+                  "inputs": {
+                    "name": "stateErrors",
+                    "value": 1
+                  },
+                  "runAfter": {}
+                }
+              },
+              "else": {
+                "actions": {}
+              },
+              "runAfter": {
+                "Rs_readable": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Rs_write_error": {
+              "type": "If",
+              "expression": {
+                "and": [
+                  {
+                    "not": {
+                      "equals": [
+                        "@or(equals(outputs('Rs_put')?['statusCode'], 204), equals(outputs('Rs_put')?['statusCode'], 200))",
+                        true
+                      ]
+                    }
+                  }
+                ]
+              },
+              "actions": {
+                "Count_write_error": {
+                  "type": "IncrementVariable",
+                  "inputs": {
+                    "name": "stateErrors",
+                    "value": 1
+                  },
+                  "runAfter": {}
+                }
+              },
+              "else": {
+                "actions": {}
+              },
+              "runAfter": {
+                "Rs_put": [
+                  "Succeeded",
+                  "Failed",
+                  "TimedOut",
+                  "Skipped"
+                ]
+              }
             }
           },
           "else": {
@@ -986,7 +1061,7 @@
         }
       },
       "runAfter": {
-        "Init_rs": [
+        "Init_state_errors": [
           "Succeeded"
         ]
       }
@@ -1069,11 +1144,27 @@
     "Any_failures": {
       "type": "If",
       "expression": {
-        "and": [
+        "or": [
           {
             "greater": [
               "@length(variables('failures'))",
               0
+            ]
+          },
+          {
+            "and": [
+              {
+                "greater": [
+                  "@variables('stateErrors')",
+                  0
+                ]
+              },
+              {
+                "equals": [
+                  "@or(empty(parameters('deployedAt')), greater(ticks(utcNow()), ticks(addMinutes(parameters('deployedAt'), parameters('stateGraceMinutes')))))",
+                  true
+                ]
+              }
             ]
           }
         ]
@@ -1084,8 +1175,8 @@
           "inputs": {
             "runStatus": "Failed",
             "runError": {
-              "code": "DeliveryFailed",
-              "message": "@{string(variables('failures'))}"
+              "code": "@{if(greater(length(variables('failures')), 0), 'DeliveryFailed', 'StateTableUnavailable')}",
+              "message": "@{concat(if(greater(length(variables('failures')), 0), concat('Feishu delivery failed: ', string(variables('failures')), ' '), ''), if(greater(variables('stateErrors'), 0), concat('Repeat-suppression state table read/write failed ', string(variables('stateErrors')), ' time(s) in this run (storage network rule, role assignment or account changed?). Alerts were still sent, without suppression.'), ''))}"
             }
           },
           "runAfter": {}
@@ -1337,6 +1428,23 @@
       },
       "runAfter": {
         "Init_send_state": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Init_state_errors": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "stateErrors",
+            "type": "integer",
+            "value": 0
+          }
+        ]
+      },
+      "runAfter": {
+        "Init_rs": [
           "Succeeded"
         ]
       }
